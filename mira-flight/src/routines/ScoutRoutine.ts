@@ -20,13 +20,13 @@ export function generateScout(params: ScoutParams): Waypoint[] {
     );
 
     waypoints.push({
-      index: idx++,
+      sequence_index: idx++,
       latitude: point.lat,
       longitude: point.lon,
       altitude_m,
       speed_ms,
       heading_deg: headingToCenter,
-      gimbal_pitch_deg: gimbal_pitch,
+      gimbal_pitch: gimbal_pitch,
       action: 'photo_all',
     });
   }
@@ -37,26 +37,26 @@ export function generateScout(params: ScoutParams): Waypoint[] {
     const point = destinationPoint(center_lat, center_lon, bearing, radius_m * 0.5);
 
     waypoints.push({
-      index: idx++,
+      sequence_index: idx++,
       latitude: point.lat,
       longitude: point.lon,
       altitude_m,
       speed_ms,
       heading_deg: bearing,
-      gimbal_pitch_deg: gimbal_pitch,
+      gimbal_pitch: gimbal_pitch,
       action: 'photo_all',
     });
   }
 
   // Center point
   waypoints.push({
-    index: idx++,
+    sequence_index: idx++,
     latitude: center_lat,
     longitude: center_lon,
     altitude_m,
     speed_ms,
     heading_deg: 0,
-    gimbal_pitch_deg: gimbal_pitch,
+    gimbal_pitch: gimbal_pitch,
     action: 'photo_all',
   });
 

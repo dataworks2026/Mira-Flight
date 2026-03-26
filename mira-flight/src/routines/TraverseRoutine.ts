@@ -6,13 +6,13 @@ export function generateTraverse(params: TraverseParams): Waypoint[] {
 
   if (userWps.length < 2) {
     return userWps.map((wp, i) => ({
-      index: i,
+      sequence_index: i,
       latitude: wp.lat,
       longitude: wp.lon,
       altitude_m,
       speed_ms,
       heading_deg: 0,
-      gimbal_pitch_deg: gimbal_pitch,
+      gimbal_pitch: gimbal_pitch,
       action: 'photo_all' as const,
     }));
   }
@@ -36,13 +36,13 @@ export function generateTraverse(params: TraverseParams): Waypoint[] {
       const point = destinationPoint(from.lat, from.lon, bearing, dist);
 
       result.push({
-        index: idx++,
+        sequence_index: idx++,
         latitude: point.lat,
         longitude: point.lon,
         altitude_m,
         speed_ms,
         heading_deg: bearing,
-        gimbal_pitch_deg: gimbal_pitch,
+        gimbal_pitch: gimbal_pitch,
         action: 'photo_all',
       });
     }

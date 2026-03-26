@@ -17,13 +17,13 @@ export function generateSweep(params: SweepParams): Waypoint[] {
     const point = destinationPoint(start_lat, start_lon, bearing, dist);
 
     waypoints.push({
-      index: i,
+      sequence_index: i,
       latitude: point.lat,
       longitude: point.lon,
       altitude_m,
       speed_ms,
       heading_deg: bearing,
-      gimbal_pitch_deg: gimbal_pitch,
+      gimbal_pitch: gimbal_pitch,
       action: 'photo_all',
     });
   }

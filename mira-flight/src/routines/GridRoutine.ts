@@ -62,13 +62,13 @@ export function generateGrid(params: GridParams): Waypoint[] {
       }
 
       waypoints.push({
-        index: idx++,
+        sequence_index: idx++,
         latitude: pointLat,
         longitude: pointLon,
         altitude_m,
         speed_ms,
         heading_deg: reverse ? 180 : 0,
-        gimbal_pitch_deg: gimbal_pitch,
+        gimbal_pitch: gimbal_pitch,
         action: 'photo_wide',
       });
     }

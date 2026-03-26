@@ -21,13 +21,13 @@ export function generateOrbit(params: OrbitParams): Waypoint[] {
     );
 
     waypoints.push({
-      index: i,
+      sequence_index: i,
       latitude: point.lat,
       longitude: point.lon,
       altitude_m,
       speed_ms,
       heading_deg: headingToCenter,
-      gimbal_pitch_deg: gimbal_pitch,
+      gimbal_pitch: gimbal_pitch,
       action: 'photo_all',
     });
   }

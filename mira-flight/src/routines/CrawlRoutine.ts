@@ -31,13 +31,13 @@ export function generateCrawl(params: CrawlParams): Waypoint[] {
       const wp = destinationPoint(scanPoint.lat, scanPoint.lon, lateralBearing, lateralOffset);
 
       waypoints.push({
-        index: idx++,
+        sequence_index: idx++,
         latitude: wp.lat,
         longitude: wp.lon,
         altitude_m: Math.max(5, alt),
         speed_ms,
         heading_deg: headingToTarget,
-        gimbal_pitch_deg: gimbal_pitch,
+        gimbal_pitch: gimbal_pitch,
         action: 'photo_all',
       });
     }
