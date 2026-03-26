@@ -1,13 +1,16 @@
 import axios, {AxiosInstance, AxiosError} from 'axios';
 import {
   Mission,
+  MissionListResponse,
+  MissionStatusResponse,
   Waypoint,
   TelemetryPoint,
   AuthResponse,
   PhotoMetadata,
+  Asset,
 } from '../types/shared';
 
-const BASE_URL = 'http://3.144.48.124:8000/api/v1';
+const BASE_URL = 'http://3.144.48.124/api/v1';
 
 let authToken: string | null = null;
 
@@ -65,7 +68,12 @@ export const miraClient = {
   },
 
   async getMissions(): Promise<Mission[]> {
-    const {data} = await api.get<Mission[]>('/missions');
+    const {data} = await api.get<MissionListResponse>('/missions');
+    return data.missions;
+  },
+
+  async getAssets(): Promise<Asset[]> {
+    const {data} = await api.get<Asset[]>('/assets');
     return data;
   },
 
@@ -82,14 +90,20 @@ export const miraClient = {
   async updateWaypoints(
     missionId: string,
     waypoints: Waypoint[],
-  ): Promise<void> {
-    await api.put(`/missions/${missionId}/waypoints`, {waypoints});
+  ): Promise<Waypoint[]> {
+    const {data} = await api.put<Waypoint[]>(
+      `/missions/${missionId}/waypoints`,
+      waypoints,
+    );
+    return data;
   },
 
   async getMissionStatus(
     missionId: string,
-  ): Promise<{status: string; progress?: number}> {
-    const {data} = await api.get(`/missions/${missionId}/status`);
+  ): Promise<MissionStatusResponse> {
+    const {data} = await api.get<MissionStatusResponse>(
+      `/missions/${missionId}/status`,
+    );
     return data;
   },
 
@@ -118,8 +132,11 @@ export const miraClient = {
     await api.post(`/missions/${missionId}/analyze-all`);
   },
 
-  async sendTelemetryBatch(points: TelemetryPoint[]): Promise<void> {
-    await api.post('/telemetry/batch', {points});
+  async sendTelemetryBatch(
+    missionId: string,
+    points: TelemetryPoint[],
+  ): Promise<void> {
+    await api.post('/telemetry/batch', {mission_id: missionId, points});
   },
 
   async triggerOdm(missionId: string): Promise<{task_id: string}> {
@@ -128,9 +145,9 @@ export const miraClient = {
   },
 
   async getOdmStatus(
-    taskId: string,
+    missionId: string,
   ): Promise<{status: string; progress?: number}> {
-    const {data} = await api.get(`/odm/status/${taskId}`);
+    const {data} = await api.get(`/odm/${missionId}/status`);
     return data;
   },
 
