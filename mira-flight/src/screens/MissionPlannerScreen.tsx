@@ -1,4 +1,4 @@
-import React, {useState, useMemo} from 'react';
+import React, {useState, useMemo, useEffect} from 'react';
 import {
   View,
   Text,
@@ -8,13 +8,13 @@ import {
   StyleSheet,
   Alert,
 } from 'react-native';
-import {useNavigation, useRoute} from '@react-navigation/native';
+import {useNavigation} from '@react-navigation/native';
 import {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import MapView, {Marker, Polyline} from 'react-native-maps';
 import {miraClient} from '../api/miraClient';
 import {generateWaypoints} from '../routines/WaypointGenerator';
 import {useMissionStore} from '../store/missionStore';
-import {RoutineType} from '../types/shared';
+import {RoutineType, Asset} from '../types/shared';
 import {RootStackParamList} from '../App';
 
 const TEAL = '#00897B';
@@ -31,25 +31,30 @@ type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
 export default function MissionPlannerScreen() {
   const navigation = useNavigation<NavProp>();
-  const route = useRoute<any>();
   const setWaypoints = useMissionStore(s => s.setWaypoints);
   const setMission = useMissionStore(s => s.setMission);
 
+  const [assets, setAssets] = useState<Asset[]>([]);
+  const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
   const [name, setName] = useState('');
-  const [assetName, setAssetName] = useState('');
   const [routineType, setRoutineType] = useState<RoutineType>('orbit');
   const [altitude, setAltitude] = useState('30');
   const [speed, setSpeed] = useState('3');
-  const [centerLat, setCenterLat] = useState('39.9612');
-  const [centerLon, setCenterLon] = useState('-82.9988');
   const [radius, setRadius] = useState('50');
   const [numPhotos, setNumPhotos] = useState('12');
   const [gimbalPitch, setGimbalPitch] = useState('-30');
 
+  useEffect(() => {
+    miraClient.getAssets().then(setAssets).catch(() => {});
+  }, []);
+
+  const centerLat = selectedAsset?.latitude ?? 40.6914;
+  const centerLon = selectedAsset?.longitude ?? -74.012285;
+
   const waypoints = useMemo(() => {
     try {
-      const lat = parseFloat(centerLat);
-      const lon = parseFloat(centerLon);
+      const lat = centerLat;
+      const lon = centerLon;
       const alt = parseFloat(altitude);
       const spd = parseFloat(speed);
       const rad = parseFloat(radius);
@@ -142,26 +147,32 @@ export default function MissionPlannerScreen() {
       Alert.alert('Error', 'Mission name is required');
       return;
     }
+    if (!selectedAsset) {
+      Alert.alert('Error', 'Select an asset');
+      return;
+    }
 
     try {
       const mission = await miraClient.createMission({
         name,
-        asset_name: assetName,
+        asset_id: selectedAsset.id,
         routine_type: routineType,
-        waypoints,
+        description: `${routineType} inspection of ${selectedAsset.name}`,
+        routine_params: waypoints.length > 0 ? undefined : undefined,
       });
+      await miraClient.updateWaypoints(mission.id, waypoints);
+      mission.waypoints = waypoints;
       setMission(mission);
       setWaypoints(waypoints);
-      await miraClient.updateWaypoints(mission.id, waypoints);
       navigation.navigate('Preflight', {missionId: mission.id});
     } catch (err: any) {
-      Alert.alert('Error', err.message || 'Failed to create mission');
+      Alert.alert('Error', err?.message || 'Failed to create mission');
     }
   };
 
   const center = {
-    latitude: parseFloat(centerLat) || 39.9612,
-    longitude: parseFloat(centerLon) || -82.9988,
+    latitude: centerLat,
+    longitude: centerLon,
   };
 
   return (
@@ -174,12 +185,28 @@ export default function MissionPlannerScreen() {
         value={name}
         onChangeText={setName}
       />
-      <TextInput
-        style={styles.input}
-        placeholder="Asset Name"
-        value={assetName}
-        onChangeText={setAssetName}
-      />
+
+      <Text style={styles.label}>Select Asset</Text>
+      <View style={styles.routineRow}>
+        {assets.map(a => (
+          <TouchableOpacity
+            key={a.id}
+            style={[
+              styles.assetBtn,
+              selectedAsset?.id === a.id && styles.assetBtnActive,
+            ]}
+            onPress={() => setSelectedAsset(a)}>
+            <Text
+              style={[
+                styles.assetText,
+                selectedAsset?.id === a.id && styles.assetTextActive,
+              ]}>
+              {a.name}
+            </Text>
+            <Text style={styles.assetSub}>{a.infrastructure_type}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
 
       <Text style={styles.label}>Flight Routine</Text>
       <View style={styles.routineRow}>
@@ -200,27 +227,6 @@ export default function MissionPlannerScreen() {
             </Text>
           </TouchableOpacity>
         ))}
-      </View>
-
-      <View style={styles.row}>
-        <View style={styles.halfInput}>
-          <Text style={styles.label}>Latitude</Text>
-          <TextInput
-            style={styles.input}
-            value={centerLat}
-            onChangeText={setCenterLat}
-            keyboardType="numeric"
-          />
-        </View>
-        <View style={styles.halfInput}>
-          <Text style={styles.label}>Longitude</Text>
-          <TextInput
-            style={styles.input}
-            value={centerLon}
-            onChangeText={setCenterLon}
-            keyboardType="numeric"
-          />
-        </View>
       </View>
 
       <View style={styles.row}>
@@ -281,12 +287,17 @@ export default function MissionPlannerScreen() {
             ...center,
             latitudeDelta: 0.005,
             longitudeDelta: 0.005,
+          }}
+          region={{
+            ...center,
+            latitudeDelta: 0.005,
+            longitudeDelta: 0.005,
           }}>
           {waypoints.map((wp, i) => (
             <Marker
               key={i}
               coordinate={{latitude: wp.latitude, longitude: wp.longitude}}
-              title={`WP ${wp.index}`}
+              title={`WP ${wp.sequence_index}`}
               pinColor={TEAL}
             />
           ))}
@@ -348,6 +359,19 @@ const styles = StyleSheet.create({
   routineBtnActive: {backgroundColor: TEAL, borderColor: TEAL},
   routineText: {fontSize: 13, color: '#666'},
   routineTextActive: {color: '#FFF'},
+  assetBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#DDD',
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  assetBtnActive: {backgroundColor: TEAL, borderColor: TEAL},
+  assetText: {fontSize: 13, color: '#333', fontWeight: '600'},
+  assetTextActive: {color: '#FFF'},
+  assetSub: {fontSize: 10, color: '#999', marginTop: 2},
   row: {flexDirection: 'row', gap: 8},
   halfInput: {flex: 1},
   thirdInput: {flex: 1},

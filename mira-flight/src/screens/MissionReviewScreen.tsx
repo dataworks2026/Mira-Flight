@@ -74,7 +74,7 @@ export default function MissionReviewScreen() {
           style={styles.dashboardBtn}
           onPress={() =>
             Linking.openURL(
-              `http://3.144.48.124:3000/missions/${mission?.id || ''}`,
+              `http://3.144.48.124/dashboard`,
             )
           }>
           <Text style={styles.dashboardBtnText}>Open Web Dashboard</Text>

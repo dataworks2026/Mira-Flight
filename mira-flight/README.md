@@ -21,7 +21,16 @@ src/
 
 ## Backend
 
-API: `http://3.144.48.124:8000/api/v1/`
+API: `http://3.144.48.124/api/v1/` (port 80 via nginx, backend on internal port 8000)
+
+### Test Credentials
+- Email: `gov_island@gmail.com`
+- Password: `gov_island@123`
+
+### Available Assets (Governor's Island)
+- Pier 101 — East Waterfront
+- Soissons Landing — North Ferry Terminal
+- Yankee Pier — Southwest Dock
 
 ## Testing
 

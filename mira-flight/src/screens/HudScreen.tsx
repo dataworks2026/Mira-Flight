@@ -109,7 +109,7 @@ export default function HudScreen() {
           <Marker
             key={i}
             coordinate={{latitude: wp.latitude, longitude: wp.longitude}}
-            title={`WP ${i}`}
+            title={`WP ${wp.sequence_index}`}
             pinColor={i < waypointCurrent ? '#4CAF50' : '#FF9800'}
             opacity={0.7}
           />

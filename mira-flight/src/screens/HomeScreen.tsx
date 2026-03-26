@@ -73,9 +73,9 @@ export default function HomeScreen() {
           <Text style={styles.statusText}>{item.status}</Text>
         </View>
       </View>
-      <Text style={styles.assetName}>{item.asset_name}</Text>
+      <Text style={styles.assetName}>{item.description || item.asset_id}</Text>
       <View style={styles.cardFooter}>
-        <Text style={styles.photoCount}>📷 {item.photo_count || 0}</Text>
+        <Text style={styles.photoCount}>📷 {item.total_photos || 0}</Text>
         <Text style={styles.date}>
           {new Date(item.created_at).toLocaleDateString()}
         </Text>
