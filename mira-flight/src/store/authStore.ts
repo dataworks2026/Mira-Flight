@@ -12,16 +12,24 @@ interface AuthState {
   restoreSession: () => Promise<void>;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>(set => ({
   token: null,
   user: null,
   loading: true,
 
   login: async (email: string, password: string) => {
     const response = await miraClient.login(email, password);
+    const user: User = {
+      id: response.user_id,
+      email: response.email,
+      full_name: response.full_name || '',
+      role: response.role,
+      organization_id: response.organization_id,
+      organization_name: response.organization_name,
+    };
     await AsyncStorage.setItem('auth_token', response.access_token);
-    await AsyncStorage.setItem('auth_user', JSON.stringify(response.user));
-    set({token: response.access_token, user: response.user});
+    await AsyncStorage.setItem('auth_user', JSON.stringify(user));
+    set({token: response.access_token, user});
   },
 
   logout: async () => {
