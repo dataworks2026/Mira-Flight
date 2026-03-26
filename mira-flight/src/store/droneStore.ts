@@ -14,15 +14,15 @@ interface DroneStoreState {
   satellites: number;
   signal: number;
   updateFromTelemetry: (data: {
-    lat: number;
-    lon: number;
-    altitude_m: number;
-    heading_deg: number;
-    speed_ms: number;
-    battery_pct: number;
-    gps_fix: string;
-    satellites: number;
-    signal_strength_pct: number;
+    latitude: number;
+    longitude: number;
+    altitude_agl?: number;
+    heading_deg?: number;
+    speed_ms?: number;
+    battery_pct?: number;
+    gps_fix_type?: string;
+    gps_satellites?: number;
+    signal_strength?: number;
   }) => void;
   setConnected: (val: boolean) => void;
   setArmed: (val: boolean) => void;
@@ -45,15 +45,15 @@ export const useDroneStore = create<DroneStoreState>(set => ({
 
   updateFromTelemetry: data =>
     set({
-      lat: data.lat,
-      lon: data.lon,
-      alt: data.altitude_m,
-      heading: data.heading_deg,
-      speed: data.speed_ms,
-      battery: data.battery_pct,
-      gps_fix: data.gps_fix,
-      satellites: data.satellites,
-      signal: data.signal_strength_pct,
+      lat: data.latitude,
+      lon: data.longitude,
+      alt: data.altitude_agl ?? 0,
+      heading: data.heading_deg ?? 0,
+      speed: data.speed_ms ?? 0,
+      battery: data.battery_pct ?? 100,
+      gps_fix: data.gps_fix_type ?? 'none',
+      satellites: data.gps_satellites ?? 0,
+      signal: data.signal_strength ?? 0,
     }),
 
   setConnected: val => set({connected: val}),

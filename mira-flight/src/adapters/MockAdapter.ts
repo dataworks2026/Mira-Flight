@@ -115,7 +115,7 @@ export class MockAdapter implements DroneAdapter {
       const wp = this.waypoints[i];
       await this.flyTo(wp.latitude, wp.longitude, wp.altitude_m);
 
-      this.state.gimbal_pitch = wp.gimbal_pitch_deg;
+      this.state.gimbal_pitch = wp.gimbal_pitch;
       this.state.heading = wp.heading_deg;
 
       for (const cb of this.waypointReachedCallbacks) {
@@ -252,16 +252,15 @@ export class MockAdapter implements DroneAdapter {
   private fireTelemetry(): void {
     const point: TelemetryPoint = {
       timestamp: new Date().toISOString(),
-      lat: this.state.lat,
-      lon: this.state.lon,
-      altitude_m: this.state.alt,
+      latitude: this.state.lat,
+      longitude: this.state.lon,
+      altitude_agl: this.state.alt,
       heading_deg: this.state.heading,
       speed_ms: this.state.speed,
       battery_pct: this.state.battery,
-      gps_fix: this.state.gps_fix,
-      satellites: this.state.satellites,
-      signal_strength_pct: this.state.signal_strength,
-      rtk_status: this.state.rtk_status,
+      gps_fix_type: this.state.gps_fix,
+      gps_satellites: this.state.satellites,
+      signal_strength: this.state.signal_strength,
     };
     for (const cb of this.telemetryCallbacks) {
       cb(point);
