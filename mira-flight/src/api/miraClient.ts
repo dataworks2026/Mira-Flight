@@ -87,6 +87,21 @@ export const miraClient = {
     return data;
   },
 
+  async pauseMission(missionId: string): Promise<MissionStatusResponse> {
+    const {data} = await api.post<MissionStatusResponse>(`/missions/${missionId}/pause`);
+    return data;
+  },
+
+  async resumeMission(missionId: string): Promise<MissionStatusResponse> {
+    const {data} = await api.post<MissionStatusResponse>(`/missions/${missionId}/resume`);
+    return data;
+  },
+
+  async abortMission(missionId: string): Promise<MissionStatusResponse> {
+    const {data} = await api.post<MissionStatusResponse>(`/missions/${missionId}/abort`);
+    return data;
+  },
+
   async updateWaypoints(
     missionId: string,
     waypoints: Waypoint[],
