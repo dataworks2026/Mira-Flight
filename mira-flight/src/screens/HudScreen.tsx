@@ -46,13 +46,14 @@ export default function HudScreen() {
   const incrementPhotos = useMissionStore(s => s.incrementPhotos);
 
   const engineRef = useRef<MissionEngine | null>(null);
+  const unsubTelemetryRef = useRef<(() => void) | null>(null);
 
   const startMission = useCallback(async () => {
     const isResume = currentMission?.status === 'in_progress';
     const engine = new MissionEngine(adapter);
     engineRef.current = engine;
 
-    adapter.onTelemetry(updateTelemetryStore);
+    unsubTelemetryRef.current = adapter.onTelemetry(updateTelemetryStore);
 
     engine.onStateChange(state => {
       updateState(state);
@@ -75,6 +76,7 @@ export default function HudScreen() {
   useEffect(() => {
     startMission();
     return () => {
+      unsubTelemetryRef.current?.();
       engineRef.current?.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
