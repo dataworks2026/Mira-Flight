@@ -7,6 +7,9 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
+  useWindowDimensions,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import {useNavigation} from '@react-navigation/native';
 import {NativeStackNavigationProp} from '@react-navigation/native-stack';
@@ -20,6 +23,8 @@ type NavProp = NativeStackNavigationProp<RootStackParamList>;
 export default function LoginScreen() {
   const navigation = useNavigation<NavProp>();
   const login = useAuthStore(s => s.login);
+  const {width, height} = useWindowDimensions();
+  const isLandscape = width > height;
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -42,39 +47,43 @@ export default function LoginScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.card}>
-        <Text style={styles.title}>Mira Flight</Text>
-        <Text style={styles.subtitle}>Ground Control Station</Text>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <View style={[styles.inner, isLandscape && styles.innerLandscape]}>
+        <View style={[styles.card, isLandscape && styles.cardLandscape]}>
+          <Text style={styles.title}>Mira Flight</Text>
+          <Text style={styles.subtitle}>Ground Control Station</Text>
 
-        <TextInput
-          style={styles.input}
-          placeholder="Email"
-          value={email}
-          onChangeText={setEmail}
-          keyboardType="email-address"
-          autoCapitalize="none"
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Password"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-        />
+          <TextInput
+            style={styles.input}
+            placeholder="Email"
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="Password"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+          />
 
-        <TouchableOpacity
-          style={styles.loginBtn}
-          onPress={handleLogin}
-          disabled={loading}>
-          {loading ? (
-            <ActivityIndicator color="#FFF" />
-          ) : (
-            <Text style={styles.loginBtnText}>Sign In</Text>
-          )}
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.loginBtn}
+            onPress={handleLogin}
+            disabled={loading}>
+            {loading ? (
+              <ActivityIndicator color="#FFF" />
+            ) : (
+              <Text style={styles.loginBtnText}>Sign In</Text>
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -82,14 +91,24 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#E0F2F1',
+  },
+  inner: {
+    flex: 1,
     justifyContent: 'center',
     padding: 24,
+  },
+  innerLandscape: {
+    alignItems: 'center',
   },
   card: {
     backgroundColor: '#FFF',
     borderRadius: 16,
     padding: 32,
     elevation: 4,
+  },
+  cardLandscape: {
+    width: 400,
+    maxWidth: '80%' as any,
   },
   title: {
     fontSize: 28,
