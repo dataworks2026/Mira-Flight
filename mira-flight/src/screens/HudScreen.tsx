@@ -1,5 +1,11 @@
 import React, {useEffect, useRef, useCallback} from 'react';
-import {View, Text, TouchableOpacity, StyleSheet} from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  useWindowDimensions,
+} from 'react-native';
 import MapView, {Marker, Polyline} from 'react-native-maps';
 import {useNavigation, useRoute} from '@react-navigation/native';
 import {NativeStackNavigationProp} from '@react-navigation/native-stack';
@@ -18,6 +24,8 @@ export default function HudScreen() {
   const route = useRoute<any>();
   const missionId = route.params?.missionId;
   const adapter = useDrone();
+  const {width, height} = useWindowDimensions();
+  const isLandscape = width > height;
 
   const lat = useDroneStore(s => s.lat);
   const lon = useDroneStore(s => s.lon);
@@ -27,6 +35,7 @@ export default function HudScreen() {
   const satellites = useDroneStore(s => s.satellites);
   const heading = useDroneStore(s => s.heading);
 
+  const currentMission = useMissionStore(s => s.currentMission);
   const missionState = useMissionStore(s => s.missionState);
   const waypointCurrent = useMissionStore(s => s.waypointCurrent);
   const waypointTotal = useMissionStore(s => s.waypointTotal);
@@ -39,10 +48,10 @@ export default function HudScreen() {
   const engineRef = useRef<MissionEngine | null>(null);
 
   const startMission = useCallback(async () => {
+    const isResume = currentMission?.status === 'in_progress';
     const engine = new MissionEngine(adapter);
     engineRef.current = engine;
 
-    // Subscribe to telemetry for store updates
     adapter.onTelemetry(updateTelemetryStore);
 
     engine.onStateChange(state => {
@@ -60,8 +69,8 @@ export default function HudScreen() {
     await adapter.connect();
     useDroneStore.getState().setConnected(true);
 
-    await engine.startMission(missionId, waypoints);
-  }, [adapter, missionId, waypoints, navigation, updateState, setProgress, incrementPhotos]);
+    await engine.startMission(missionId, waypoints, isResume);
+  }, [adapter, missionId, waypoints, currentMission, navigation, updateState, setProgress, incrementPhotos]);
 
   useEffect(() => {
     startMission();
@@ -78,20 +87,108 @@ export default function HudScreen() {
   };
 
   const droneCoord = lat !== 0 ? {latitude: lat, longitude: lon} : null;
+  const mapRegion = droneCoord
+    ? {...droneCoord, latitudeDelta: 0.003, longitudeDelta: 0.003}
+    : {latitude: 39.9612, longitude: -82.9988, latitudeDelta: 0.01, longitudeDelta: 0.01};
+
+  const telemetryItems = [
+    {label: 'ALT', value: `${alt.toFixed(1)}m`, warn: false},
+    {label: 'SPD', value: `${speed.toFixed(1)}m/s`, warn: false},
+    {label: 'BAT', value: `${battery.toFixed(0)}%`, warn: battery < 30},
+    {label: 'GPS', value: `${satellites}sat`, warn: satellites < 6},
+    {label: 'HDG', value: `${heading.toFixed(0)}°`, warn: false},
+  ];
+
+  const telemetryStrip = (
+    <View style={[styles.telemetryStrip, isLandscape && styles.telemetryStripLandscape]}>
+      {telemetryItems.map(item => (
+        <View key={item.label} style={[styles.telemetryItem, isLandscape && styles.telemetryItemLandscape]}>
+          <Text style={styles.telemetryLabel}>{item.label}</Text>
+          <Text
+            style={[
+              styles.telemetryValue,
+              item.warn && {color: '#F44336'},
+            ]}>
+            {item.value}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+
+  const progressBar = (
+    <View style={styles.progressContainer}>
+      <View style={styles.progressRow}>
+        <Text style={styles.progressText}>
+          WP {waypointCurrent}/{waypointTotal}
+        </Text>
+        <Text style={styles.progressText}>📷 {photosCount}</Text>
+        <Text style={styles.stateText}>{missionState}</Text>
+      </View>
+      <View style={styles.progressBar}>
+        <View
+          style={[
+            styles.progressFill,
+            {
+              width: `${
+                waypointTotal > 0
+                  ? (waypointCurrent / waypointTotal) * 100
+                  : 0
+              }%`,
+            },
+          ]}
+        />
+      </View>
+    </View>
+  );
+
+  if (isLandscape) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.landscapeBody}>
+          {telemetryStrip}
+          <View style={styles.landscapeMapArea}>
+            <MapView
+              style={styles.map}
+              region={mapRegion}>
+              {droneCoord && (
+                <Marker coordinate={droneCoord} title="Drone" pinColor="#F44336" />
+              )}
+              {waypoints.length > 1 && (
+                <Polyline
+                  coordinates={waypoints.map(wp => ({
+                    latitude: wp.latitude,
+                    longitude: wp.longitude,
+                  }))}
+                  strokeColor="#00897B"
+                  strokeWidth={2}
+                />
+              )}
+              {waypoints.map((wp, i) => (
+                <Marker
+                  key={i}
+                  coordinate={{latitude: wp.latitude, longitude: wp.longitude}}
+                  title={`WP ${wp.sequence_index}`}
+                  pinColor={i < waypointCurrent ? '#4CAF50' : '#FF9800'}
+                  opacity={0.7}
+                />
+              ))}
+            </MapView>
+            {progressBar}
+          </View>
+          <TouchableOpacity style={styles.abortBtnLandscape} onPress={handleAbort}>
+            <Text style={styles.abortText}>ABORT</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
       <MapView
         style={styles.map}
-        region={
-          droneCoord
-            ? {
-                ...droneCoord,
-                latitudeDelta: 0.003,
-                longitudeDelta: 0.003,
-              }
-            : undefined
-        }>
+        region={mapRegion}>
         {droneCoord && (
           <Marker coordinate={droneCoord} title="Drone" pinColor="#F44336" />
         )}
@@ -116,62 +213,9 @@ export default function HudScreen() {
         ))}
       </MapView>
 
-      {/* Telemetry strip */}
-      <View style={styles.telemetryStrip}>
-        <View style={styles.telemetryItem}>
-          <Text style={styles.telemetryLabel}>ALT</Text>
-          <Text style={styles.telemetryValue}>{alt.toFixed(1)}m</Text>
-        </View>
-        <View style={styles.telemetryItem}>
-          <Text style={styles.telemetryLabel}>SPD</Text>
-          <Text style={styles.telemetryValue}>{speed.toFixed(1)}m/s</Text>
-        </View>
-        <View style={styles.telemetryItem}>
-          <Text style={styles.telemetryLabel}>BAT</Text>
-          <Text
-            style={[
-              styles.telemetryValue,
-              battery < 30 && {color: '#F44336'},
-            ]}>
-            {battery.toFixed(0)}%
-          </Text>
-        </View>
-        <View style={styles.telemetryItem}>
-          <Text style={styles.telemetryLabel}>GPS</Text>
-          <Text style={styles.telemetryValue}>{satellites}sat</Text>
-        </View>
-        <View style={styles.telemetryItem}>
-          <Text style={styles.telemetryLabel}>HDG</Text>
-          <Text style={styles.telemetryValue}>{heading.toFixed(0)}°</Text>
-        </View>
-      </View>
+      {telemetryStrip}
+      {progressBar}
 
-      {/* Progress bar */}
-      <View style={styles.progressContainer}>
-        <View style={styles.progressRow}>
-          <Text style={styles.progressText}>
-            WP {waypointCurrent}/{waypointTotal}
-          </Text>
-          <Text style={styles.progressText}>📷 {photosCount}</Text>
-          <Text style={styles.stateText}>{missionState}</Text>
-        </View>
-        <View style={styles.progressBar}>
-          <View
-            style={[
-              styles.progressFill,
-              {
-                width: `${
-                  waypointTotal > 0
-                    ? (waypointCurrent / waypointTotal) * 100
-                    : 0
-                }%`,
-              },
-            ]}
-          />
-        </View>
-      </View>
-
-      {/* Abort button */}
       <TouchableOpacity style={styles.abortBtn} onPress={handleAbort}>
         <Text style={styles.abortText}>ABORT</Text>
       </TouchableOpacity>
@@ -181,6 +225,8 @@ export default function HudScreen() {
 
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: '#1A1A1A'},
+  landscapeBody: {flex: 1, flexDirection: 'row'},
+  landscapeMapArea: {flex: 1},
   map: {flex: 1},
   telemetryStrip: {
     flexDirection: 'row',
@@ -189,7 +235,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     justifyContent: 'space-around',
   },
+  telemetryStripLandscape: {
+    flexDirection: 'column',
+    width: 80,
+    paddingVertical: 16,
+    justifyContent: 'space-around',
+  },
   telemetryItem: {alignItems: 'center', paddingHorizontal: 4},
+  telemetryItemLandscape: {paddingVertical: 8},
   telemetryLabel: {color: '#888', fontSize: 10, fontWeight: '600'},
   telemetryValue: {color: '#0F0', fontSize: 16, fontWeight: '700', fontFamily: 'monospace'},
   progressContainer: {
@@ -217,6 +270,12 @@ const styles = StyleSheet.create({
   abortBtn: {
     backgroundColor: '#D32F2F',
     paddingVertical: 14,
+    alignItems: 'center',
+  },
+  abortBtnLandscape: {
+    backgroundColor: '#D32F2F',
+    width: 80,
+    justifyContent: 'center',
     alignItems: 'center',
   },
   abortText: {color: '#FFF', fontSize: 18, fontWeight: '800'},
