@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import {useNavigation, useRoute} from '@react-navigation/native';
 import {NativeStackNavigationProp} from '@react-navigation/native-stack';
-import MapView, {Marker, Polyline} from 'react-native-maps';
+import MapView, {Marker, Polygon, Polyline} from 'react-native-maps';
 import {miraClient} from '../api/miraClient';
 import {generateWaypoints} from '../routines/WaypointGenerator';
 import {useMissionStore} from '../store/missionStore';
@@ -53,6 +53,10 @@ export default function MissionPlannerScreen() {
   const [loading, setLoading] = useState(false);
   const [loadingExisting, setLoadingExisting] = useState(!!editMissionId);
   const [isEdit, setIsEdit] = useState(false);
+  const [drawMode, setDrawMode] = useState(false);
+  const [boundaryPoints, setBoundaryPoints] = useState<
+    {latitude: number; longitude: number}[]
+  >([]);
 
   useEffect(() => {
     miraClient.getAssets().then(setAssets).catch(() => {});
@@ -81,10 +85,11 @@ export default function MissionPlannerScreen() {
   }, [editMissionId, setMission, setStoreWaypoints]);
 
   useEffect(() => {
-    if (!editMissionId && assets.length > 0 && !selectedAsset) {
-      // For existing missions loaded via editMissionId, asset matching happens in the mission load effect
+    if (routineType !== 'grid' && routineType !== 'traverse') {
+      setBoundaryPoints([]);
+      setDrawMode(false);
     }
-  }, [assets, editMissionId, selectedAsset]);
+  }, [routineType]);
 
   const centerLat = selectedAsset?.latitude ?? 40.6914;
   const centerLon = selectedAsset?.longitude ?? -74.012285;
@@ -134,14 +139,20 @@ export default function MissionPlannerScreen() {
         });
       }
       if (routineType === 'grid') {
-        const offset = 0.0005;
+        const boundary =
+          boundaryPoints.length >= 3
+            ? boundaryPoints.map(p => ({lat: p.latitude, lon: p.longitude, alt: 0}))
+            : (() => {
+                const offset = 0.0005;
+                return [
+                  {lat: lat - offset, lon: lon - offset, alt: 0},
+                  {lat: lat + offset, lon: lon - offset, alt: 0},
+                  {lat: lat + offset, lon: lon + offset, alt: 0},
+                  {lat: lat - offset, lon: lon + offset, alt: 0},
+                ];
+              })();
         return generateWaypoints('grid', {
-          boundary: [
-            {lat: lat - offset, lon: lon - offset, alt: 0},
-            {lat: lat + offset, lon: lon - offset, alt: 0},
-            {lat: lat + offset, lon: lon + offset, alt: 0},
-            {lat: lat - offset, lon: lon + offset, alt: 0},
-          ],
+          boundary,
           altitude_m: alt,
           speed_ms: spd,
           overlap_pct: 70,
@@ -163,11 +174,15 @@ export default function MissionPlannerScreen() {
         });
       }
       if (routineType === 'traverse') {
+        const traverseWps =
+          boundaryPoints.length >= 2
+            ? boundaryPoints.map(p => ({lat: p.latitude, lon: p.longitude, alt: 0}))
+            : [
+                {lat, lon, alt: 0},
+                {lat: lat + 0.001, lon: lon + 0.001, alt: 0},
+              ];
         return generateWaypoints('traverse', {
-          waypoints: [
-            {lat, lon, alt: 0},
-            {lat: lat + 0.001, lon: lon + 0.001, alt: 0},
-          ],
+          waypoints: traverseWps,
           altitude_m: alt,
           speed_ms: spd,
           photo_interval_m: rad,
@@ -178,7 +193,7 @@ export default function MissionPlannerScreen() {
     } catch {
       return [];
     }
-  }, [routineType, centerLat, centerLon, altitude, speed, radius, numPhotos, gimbalPitch]);
+  }, [routineType, centerLat, centerLon, altitude, speed, radius, numPhotos, gimbalPitch, boundaryPoints]);
 
   const handleCreate = async () => {
     if (!name.trim()) {
@@ -212,6 +227,19 @@ export default function MissionPlannerScreen() {
 
   const center = {latitude: centerLat, longitude: centerLon};
 
+  const needsBoundary = routineType === 'grid' || routineType === 'traverse';
+
+  const handleMapPress = useCallback(
+    (e: any) => {
+      if (!drawMode || isEdit) {
+        return;
+      }
+      const {latitude, longitude} = e.nativeEvent.coordinate;
+      setBoundaryPoints(prev => [...prev, {latitude, longitude}]);
+    },
+    [drawMode, isEdit],
+  );
+
   if (loadingExisting) {
     return (
       <View style={styles.loadingContainer}>
@@ -223,6 +251,27 @@ export default function MissionPlannerScreen() {
 
   const mapSection = (
     <View style={[styles.mapContainer, isLandscape && styles.mapLandscape]}>
+      {needsBoundary && !isEdit && (
+        <View style={styles.drawToolbar}>
+          <TouchableOpacity
+            style={[styles.drawBtn, drawMode && styles.drawBtnActive]}
+            onPress={() => setDrawMode(d => !d)}>
+            <Text style={[styles.drawBtnText, drawMode && styles.drawBtnTextActive]}>
+              {drawMode ? '✏️ Drawing…' : '✏️ Draw'}
+            </Text>
+          </TouchableOpacity>
+          {boundaryPoints.length > 0 && (
+            <TouchableOpacity
+              style={styles.clearBtn}
+              onPress={() => setBoundaryPoints([])}>
+              <Text style={styles.clearBtnText}>Clear</Text>
+            </TouchableOpacity>
+          )}
+          {boundaryPoints.length > 0 && (
+            <Text style={styles.ptCount}>{boundaryPoints.length} pts</Text>
+          )}
+        </View>
+      )}
       <MapView
         style={styles.map}
         initialRegion={{
@@ -234,7 +283,8 @@ export default function MissionPlannerScreen() {
           ...center,
           latitudeDelta: 0.005,
           longitudeDelta: 0.005,
-        }}>
+        }}
+        onPress={handleMapPress}>
         {waypoints.map((wp, i) => (
           <Marker
             key={i}
@@ -253,6 +303,29 @@ export default function MissionPlannerScreen() {
             strokeWidth={2}
           />
         )}
+        {routineType === 'grid' && boundaryPoints.length >= 3 && (
+          <Polygon
+            coordinates={boundaryPoints}
+            strokeColor="#FF6F00"
+            fillColor="rgba(255,111,0,0.15)"
+            strokeWidth={2}
+          />
+        )}
+        {routineType === 'traverse' && boundaryPoints.length >= 2 && (
+          <Polyline
+            coordinates={boundaryPoints}
+            strokeColor="#FF6F00"
+            strokeWidth={3}
+          />
+        )}
+        {boundaryPoints.map((pt, i) => (
+          <Marker
+            key={`bp-${i}`}
+            coordinate={pt}
+            pinColor="#FF6F00"
+            title={`Pt ${i + 1}`}
+          />
+        ))}
       </MapView>
       <View style={styles.waypointBadge}>
         <Text style={styles.waypointBadgeText}>
@@ -498,6 +571,44 @@ const styles = StyleSheet.create({
     borderRadius: 0,
     borderWidth: 0,
     margin: 0,
+  },
+  drawToolbar: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    zIndex: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  drawBtn: {
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: '#DDD',
+  },
+  drawBtnActive: {backgroundColor: '#FF6F00', borderColor: '#FF6F00'},
+  drawBtnText: {fontSize: 12, fontWeight: '600', color: '#333'},
+  drawBtnTextActive: {color: '#FFF'},
+  clearBtn: {
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: '#DDD',
+  },
+  clearBtnText: {fontSize: 12, fontWeight: '600', color: '#F44336'},
+  ptCount: {
+    fontSize: 11,
+    color: '#FFF',
+    fontWeight: '700',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 4,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
   },
   map: {flex: 1},
   waypointBadge: {
