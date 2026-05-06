@@ -145,7 +145,7 @@ export class MissionEngine {
       const odmResult = await miraClient.triggerOdm(this.missionId);
       this.setState(MissionState.PROCESSING_3D);
 
-      await this.pollOdm(odmResult.task_id);
+      await this.pollOdm(this.missionId);
 
       this.setState(MissionState.COMPLETED);
     } catch (err: any) {
