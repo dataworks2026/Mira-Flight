@@ -158,10 +158,62 @@ export class MissionEngine {
     }
   }
 
+  async pause(): Promise<void> {
+    try {
+      await this.adapter.returnToHome();
+      this.telemetryCollector.stop();
+      this.telemetryUploader.stop();
+      this.setState(MissionState.PAUSED);
+      if (this.missionId) {
+        await miraClient.pauseMission(this.missionId);
+      }
+    } catch (err: any) {
+      this.emitError(err);
+    }
+  }
+
+  async resume(waypoints: Waypoint[]): Promise<void> {
+    if (this.state !== MissionState.PAUSED) {
+      return;
+    }
+    try {
+      if (this.missionId) {
+        await miraClient.resumeMission(this.missionId);
+      }
+      this.waypoints = waypoints;
+      this.setState(MissionState.FLYING);
+      await this.adapter.arm();
+      await this.adapter.takeoff(waypoints[0]?.altitude_m ?? 30);
+      this.telemetryCollector.start();
+      this.telemetryUploader.start(this.missionId);
+      this.uploadWorker.start(this.missionId);
+      await this.adapter.uploadWaypoints(waypoints);
+      this.unsubWaypoint?.();
+      this.unsubComplete?.();
+      this.unsubWaypoint = this.adapter.onWaypointReached(async index => {
+        for (const cb of this.progressCallbacks) {
+          cb(index + 1, this.waypoints.length);
+        }
+        if (this.photoCaptureManager) {
+          await this.photoCaptureManager.handleWaypointReached(index, this.waypoints);
+        }
+      });
+      this.unsubComplete = this.adapter.onMissionComplete(async () => {
+        await this.onAllWaypointsComplete();
+      });
+      await this.adapter.startWaypointMission();
+    } catch (err: any) {
+      this.emitError(err);
+    }
+  }
+
   async abort(): Promise<void> {
     try {
       this.cleanup();
       await this.adapter.returnToHome();
+      if (this.missionId) {
+        await miraClient.abortMission(this.missionId);
+      }
       this.state = MissionState.ABORTED;
       for (const cb of this.stateCallbacks) {
         cb(this.state);
