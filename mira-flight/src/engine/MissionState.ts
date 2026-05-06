@@ -12,15 +12,15 @@ export enum MissionState {
 }
 
 const VALID_TRANSITIONS: Record<MissionState, MissionState[]> = {
-  [MissionState.IDLE]: [MissionState.PREFLIGHT],
-  [MissionState.PREFLIGHT]: [MissionState.FLYING, MissionState.ABORTED],
+  [MissionState.IDLE]: [MissionState.PREFLIGHT, MissionState.FAILED],
+  [MissionState.PREFLIGHT]: [MissionState.FLYING, MissionState.ABORTED, MissionState.FAILED],
   [MissionState.FLYING]: [
     MissionState.PAUSED,
     MissionState.UPLOADING,
     MissionState.ABORTED,
     MissionState.FAILED,
   ],
-  [MissionState.PAUSED]: [MissionState.FLYING, MissionState.ABORTED],
+  [MissionState.PAUSED]: [MissionState.FLYING, MissionState.ABORTED, MissionState.FAILED],
   [MissionState.UPLOADING]: [MissionState.ANALYZING, MissionState.FAILED],
   [MissionState.ANALYZING]: [MissionState.PROCESSING_3D, MissionState.FAILED],
   [MissionState.PROCESSING_3D]: [MissionState.COMPLETED, MissionState.FAILED],
