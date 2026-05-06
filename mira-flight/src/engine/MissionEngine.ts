@@ -5,6 +5,7 @@ import {PhotoQueue} from '../upload/PhotoQueue';
 import {UploadWorker} from '../upload/UploadWorker';
 import {AnalysisTrigger} from '../upload/AnalysisTrigger';
 import {TelemetryCollector} from '../telemetry/TelemetryCollector';
+import {TelemetryUploader} from '../telemetry/TelemetryUploader';
 import {Waypoint, PhotoUploadItem} from '../types/shared';
 import {miraClient} from '../api/miraClient';
 
@@ -19,6 +20,7 @@ export class MissionEngine {
   private uploadWorker: UploadWorker;
   private analysisTrigger: AnalysisTrigger;
   private telemetryCollector: TelemetryCollector;
+  private telemetryUploader: TelemetryUploader;
   private photoCaptureManager: PhotoCaptureManager | null = null;
   private waypoints: Waypoint[] = [];
   private missionId: string = '';
@@ -36,6 +38,7 @@ export class MissionEngine {
     this.uploadWorker = new UploadWorker(this.photoQueue);
     this.analysisTrigger = new AnalysisTrigger(this.photoQueue);
     this.telemetryCollector = new TelemetryCollector(adapter);
+    this.telemetryUploader = new TelemetryUploader(this.telemetryCollector);
   }
 
   getState(): MissionState {
@@ -70,7 +73,7 @@ export class MissionEngine {
     };
   }
 
-  async startMission(missionId: string, waypoints: Waypoint[]): Promise<void> {
+  async startMission(missionId: string, waypoints: Waypoint[], resume = false): Promise<void> {
     try {
       this.missionId = missionId;
       this.waypoints = waypoints;
@@ -86,7 +89,9 @@ export class MissionEngine {
         enqueue,
       );
 
-      await miraClient.startMission(missionId);
+      if (!resume) {
+        await miraClient.startMission(missionId);
+      }
       await this.adapter.uploadWaypoints(waypoints);
 
       this.setState(MissionState.FLYING);
@@ -95,6 +100,7 @@ export class MissionEngine {
       await this.adapter.takeoff(waypoints[0]?.altitude_m ?? 30);
 
       this.telemetryCollector.start();
+      this.telemetryUploader.start(missionId);
       this.uploadWorker.start(missionId);
 
       this.unsubWaypoint = this.adapter.onWaypointReached(async index => {
@@ -206,6 +212,7 @@ export class MissionEngine {
     this.unsubWaypoint?.();
     this.unsubComplete?.();
     this.telemetryCollector.stop();
+    this.telemetryUploader.stop();
     this.uploadWorker.stop();
   }
 }
