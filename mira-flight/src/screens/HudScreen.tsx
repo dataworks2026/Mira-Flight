@@ -16,6 +16,7 @@ import {MissionEngine} from '../engine/MissionEngine';
 import {MissionState} from '../engine/MissionState';
 import {updateTelemetryStore} from '../telemetry/TelemetryStore';
 import {RootStackParamList} from '../App';
+import LiveVideoPlayer from '../components/LiveVideoPlayer';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -150,6 +151,7 @@ export default function HudScreen() {
         <View style={styles.landscapeBody}>
           {telemetryStrip}
           <View style={styles.landscapeMapArea}>
+            <LiveVideoPlayer style={styles.videoOverlay} />
             <MapView
               style={styles.map}
               region={mapRegion}>
@@ -218,6 +220,8 @@ export default function HudScreen() {
       {telemetryStrip}
       {progressBar}
 
+      <LiveVideoPlayer style={styles.videoOverlayPortrait} />
+
       <TouchableOpacity style={styles.abortBtn} onPress={handleAbort}>
         <Text style={styles.abortText}>ABORT</Text>
       </TouchableOpacity>
@@ -281,4 +285,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   abortText: {color: '#FFF', fontSize: 18, fontWeight: '800'},
+  videoOverlay: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    zIndex: 10,
+  },
+  videoOverlayPortrait: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    zIndex: 10,
+  },
 });
