@@ -14,7 +14,6 @@ import {useNavigation} from '@react-navigation/native';
 import {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {miraClient} from '../api/miraClient';
 import {Mission} from '../types/shared';
-import {useDroneStore} from '../store/droneStore';
 import {useMissionStore} from '../store/missionStore';
 import {useAuthStore} from '../store/authStore';
 import {RootStackParamList} from '../App';
@@ -48,7 +47,7 @@ export default function HomeScreen() {
   const [missions, setMissions] = useState<Mission[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMission, setLoadingMission] = useState<string | null>(null);
-  const connected = useDroneStore(s => s.connected);
+  const [backendOnline, setBackendOnline] = useState(false);
   const setMission = useMissionStore(s => s.setMission);
   const setWaypoints = useMissionStore(s => s.setWaypoints);
   const logout = useAuthStore(s => s.logout);
@@ -57,7 +56,9 @@ export default function HomeScreen() {
     try {
       const data = await miraClient.getMissions();
       setMissions(data);
+      setBackendOnline(true);
     } catch (err: any) {
+      setBackendOnline(false);
       console.warn('Failed to fetch missions:', err?.message);
     }
   }, []);
@@ -150,7 +151,7 @@ export default function HomeScreen() {
           <View
             style={[
               styles.connectionDot,
-              {backgroundColor: connected ? '#4CAF50' : '#F44336'},
+              {backgroundColor: backendOnline ? '#4CAF50' : '#F44336'},
             ]}
           />
           <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn}>
