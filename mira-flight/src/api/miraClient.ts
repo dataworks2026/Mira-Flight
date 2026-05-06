@@ -69,7 +69,7 @@ export const miraClient = {
 
   async getMissions(): Promise<Mission[]> {
     const {data} = await api.get<MissionListResponse>('/missions');
-    return data.missions;
+    return data.missions ?? [];
   },
 
   async getAssets(): Promise<Asset[]> {

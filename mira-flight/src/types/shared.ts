@@ -192,7 +192,7 @@ export interface Mission {
   photos_analyzed: number;
   odm_job_id?: string;
   odm_status?: string;
-  waypoints: Waypoint[];
+  waypoints?: Waypoint[];
   created_at: string;
   updated_at: string;
 }
