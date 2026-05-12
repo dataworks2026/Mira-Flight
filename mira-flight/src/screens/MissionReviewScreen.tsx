@@ -1,4 +1,4 @@
-import React from 'react';
+import React, {useEffect, useState} from 'react';
 import {
   View,
   Text,
@@ -8,9 +8,11 @@ import {
   Linking,
   useWindowDimensions,
 } from 'react-native';
-import {useNavigation} from '@react-navigation/native';
+import {useNavigation, useRoute} from '@react-navigation/native';
 import {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {useMissionStore} from '../store/missionStore';
+import {miraClient} from '../api/miraClient';
+import {Mission} from '../types/shared';
 import {RootStackParamList} from '../App';
 
 const TEAL = '#00897B';
@@ -19,38 +21,63 @@ type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
 export default function MissionReviewScreen() {
   const navigation = useNavigation<NavProp>();
+  const route = useRoute<any>();
   const {width, height} = useWindowDimensions();
   const isLandscape = width > height;
   const mission = useMissionStore(s => s.currentMission);
   const photosCount = useMissionStore(s => s.photosCount);
   const uploadedCount = useMissionStore(s => s.uploadedCount);
   const missionState = useMissionStore(s => s.missionState);
+  const setAnalyzedCount = useMissionStore(s => s.setAnalyzedCount);
+  const setMission = useMissionStore(s => s.setMission);
   const reset = useMissionStore(s => s.reset);
+
+  const [freshMission, setFreshMission] = useState<Mission | null>(null);
+
+  useEffect(() => {
+    const missionId = route.params?.missionId ?? mission?.id;
+    if (!missionId) {
+      return;
+    }
+    miraClient
+      .getMission(missionId)
+      .then(m => {
+        setFreshMission(m);
+        setMission(m);
+        setAnalyzedCount(m.photos_analyzed);
+      })
+      .catch(() => {});
+  }, [route.params?.missionId, mission?.id, setMission, setAnalyzedCount]);
 
   const handleReturnHome = () => {
     reset();
     navigation.navigate('Home');
   };
 
+  const display = freshMission ?? mission;
+  const analyzed = display?.photos_analyzed ?? 0;
+  const total = display?.total_photos || photosCount;
+  const uploaded = display?.photos_uploaded ?? uploadedCount;
+
   const cards = [
     {
       title: 'Photos Captured',
-      value: `${mission?.total_photos || photosCount}`,
+      value: `${total}`,
       icon: '📷',
     },
     {
       title: 'Upload Progress',
-      value: `${mission?.photos_uploaded || uploadedCount}/${mission?.total_photos || photosCount} uploaded`,
+      value: `${uploaded}/${total} uploaded`,
       icon: '☁️',
     },
     {
       title: 'Analysis Status',
-      value: mission?.status || missionState,
+      value: `${analyzed}/${total} analyzed`,
       icon: '🔍',
     },
     {
       title: 'ODM Processing',
-      value: mission?.odm_status || (missionState === 'COMPLETED' ? 'Complete' : 'Pending'),
+      value: display?.odm_status || (missionState === 'COMPLETED' ? 'Complete' : 'Pending'),
       icon: '🗺️',
     },
   ];
