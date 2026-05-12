@@ -1,4 +1,4 @@
-import React, {useState} from 'react';
+import React, {useRef, useState} from 'react';
 import {
   View,
   Text,
@@ -10,13 +10,12 @@ import {
   useWindowDimensions,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
 } from 'react-native';
 import {useNavigation} from '@react-navigation/native';
 import {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {useAuthStore} from '../store/authStore';
 import {RootStackParamList} from '../App';
-
-const TEAL = '#00897B';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -29,6 +28,8 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const passwordRef = useRef<TextInput>(null);
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
@@ -49,8 +50,14 @@ export default function LoginScreen() {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <View style={[styles.inner, isLandscape && styles.innerLandscape]}>
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.inner,
+          isLandscape && styles.innerLandscape,
+        ]}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}>
         <View style={[styles.card, isLandscape && styles.cardLandscape]}>
           <Text style={styles.title}>Mira Flight</Text>
           <Text style={styles.subtitle}>Ground Control Station</Text>
@@ -58,17 +65,27 @@ export default function LoginScreen() {
           <TextInput
             style={styles.input}
             placeholder="Email"
+            placeholderTextColor="#475569"
             value={email}
             onChangeText={setEmail}
             keyboardType="email-address"
             autoCapitalize="none"
+            autoCorrect={false}
+            autoFocus
+            returnKeyType="next"
+            onSubmitEditing={() => passwordRef.current?.focus()}
+            blurOnSubmit={false}
           />
           <TextInput
+            ref={passwordRef}
             style={styles.input}
             placeholder="Password"
+            placeholderTextColor="#475569"
             value={password}
             onChangeText={setPassword}
             secureTextEntry
+            returnKeyType="done"
+            onSubmitEditing={handleLogin}
           />
 
           <TouchableOpacity
@@ -76,13 +93,13 @@ export default function LoginScreen() {
             onPress={handleLogin}
             disabled={loading}>
             {loading ? (
-              <ActivityIndicator color="#FFF" />
+              <ActivityIndicator color="#F8FAFC" />
             ) : (
               <Text style={styles.loginBtnText}>Sign In</Text>
             )}
           </TouchableOpacity>
         </View>
-      </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
@@ -90,10 +107,10 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#E0F2F1',
+    backgroundColor: '#0A0E14',
   },
   inner: {
-    flex: 1,
+    flexGrow: 1,
     justifyContent: 'center',
     padding: 24,
   },
@@ -101,42 +118,50 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   card: {
-    backgroundColor: '#FFF',
-    borderRadius: 16,
+    backgroundColor: '#131822',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#1E2530',
     padding: 32,
     elevation: 4,
   },
   cardLandscape: {
-    width: 400,
+    width: 480,
     maxWidth: '80%' as any,
   },
   title: {
     fontSize: 28,
     fontWeight: '800',
-    color: TEAL,
+    color: '#00D4FF',
     textAlign: 'center',
   },
   subtitle: {
     fontSize: 14,
-    color: '#999',
+    color: '#94A3B8',
     textAlign: 'center',
     marginBottom: 32,
+    marginTop: 4,
   },
   input: {
     borderWidth: 1,
-    borderColor: '#DDD',
-    borderRadius: 10,
-    padding: 14,
+    borderColor: '#2D3748',
+    borderRadius: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
     fontSize: 16,
     marginBottom: 16,
-    backgroundColor: '#FAFAFA',
+    backgroundColor: '#1E2530',
+    color: '#F8FAFC',
+    minHeight: 56,
   },
   loginBtn: {
-    backgroundColor: TEAL,
-    borderRadius: 10,
-    padding: 16,
+    backgroundColor: '#00D4FF',
+    borderRadius: 6,
+    paddingVertical: 16,
     alignItems: 'center',
     marginTop: 8,
+    minHeight: 56,
+    justifyContent: 'center',
   },
-  loginBtnText: {color: '#FFF', fontSize: 17, fontWeight: '700'},
+  loginBtnText: {color: '#0A0E14', fontSize: 17, fontWeight: '700'},
 });
