@@ -279,11 +279,6 @@ export default function MissionPlannerScreen() {
           latitudeDelta: 0.005,
           longitudeDelta: 0.005,
         }}
-        region={{
-          ...center,
-          latitudeDelta: 0.005,
-          longitudeDelta: 0.005,
-        }}
         onPress={handleMapPress}>
         {waypoints.map((wp, i) => (
           <Marker
