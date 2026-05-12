@@ -30,6 +30,7 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
 
   const passwordRef = useRef<TextInput>(null);
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
@@ -76,17 +77,25 @@ export default function LoginScreen() {
             onSubmitEditing={() => passwordRef.current?.focus()}
             blurOnSubmit={false}
           />
-          <TextInput
-            ref={passwordRef}
-            style={styles.input}
-            placeholder="Password"
-            placeholderTextColor="#475569"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            returnKeyType="done"
-            onSubmitEditing={handleLogin}
-          />
+          <View style={styles.passwordRow}>
+            <TextInput
+              ref={passwordRef}
+              style={[styles.input, styles.passwordInput]}
+              placeholder="Password"
+              placeholderTextColor="#475569"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={!showPassword}
+              returnKeyType="done"
+              onSubmitEditing={handleLogin}
+            />
+            <TouchableOpacity
+              style={styles.eyeBtn}
+              onPress={() => setShowPassword(v => !v)}
+              hitSlop={{top: 12, bottom: 12, left: 12, right: 12}}>
+              <Text style={styles.eyeText}>{showPassword ? '🙈' : '👁'}</Text>
+            </TouchableOpacity>
+          </View>
 
           <TouchableOpacity
             style={styles.loginBtn}
@@ -164,4 +173,22 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   loginBtnText: {color: '#0A0E14', fontSize: 17, fontWeight: '700'},
+  passwordRow: {
+    position: 'relative',
+    marginBottom: 16,
+  },
+  passwordInput: {
+    marginBottom: 0,
+    paddingRight: 52,
+  },
+  eyeBtn: {
+    position: 'absolute',
+    right: 14,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+  },
+  eyeText: {
+    fontSize: 20,
+  },
 });
