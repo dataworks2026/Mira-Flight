@@ -1,0 +1,74 @@
+# ════════════════════════════════════════════════════
+# SECRETS — never commit
+# ════════════════════════════════════════════════════
+*.pem
+*.key
+*.p12
+*.keystore
+*.jks
+.env
+.env.*
+!.env.example
+mira-flight/android/app/google-services.json
+mira-flight/android/app/release.keystore
+
+# ════════════════════════════════════════════════════
+# DOCUMENTATION & AGENT MEMORY (per user preference — never push to GitHub)
+# ════════════════════════════════════════════════════
+*.md
+.claude/
+HANDOFF.md
+BRAIN.md
+CLAUDE.md
+ROADMAP.md
+SKILLS.md
+police.md
+SESSION.md
+
+# ════════════════════════════════════════════════════
+# Node / React Native
+# ════════════════════════════════════════════════════
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.metro-health-check*
+.expo/
+
+# ════════════════════════════════════════════════════
+# Android
+# ════════════════════════════════════════════════════
+mira-flight/android/.gradle/
+mira-flight/android/build/
+mira-flight/android/app/build/
+mira-flight/android/local.properties
+mira-flight/android/app/release/
+*.apk
+*.aab
+*.dex
+*.ap_
+mira-flight/android/captures/
+
+# ════════════════════════════════════════════════════
+# iOS
+# ════════════════════════════════════════════════════
+mira-flight/ios/
+
+# ════════════════════════════════════════════════════
+# IDE
+# ════════════════════════════════════════════════════
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ════════════════════════════════════════════════════
+# Build artifacts
+# ════════════════════════════════════════════════════
+dist/
+build/
+coverage/
+*.log
