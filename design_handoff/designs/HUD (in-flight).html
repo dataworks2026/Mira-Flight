@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Mira Flight — HUD (in-flight)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&family=Roboto:wght@300;400;500;700;900&family=Roboto+Mono:wght@400;500;600;700&display=swap">
+<style>
+  html, body { margin: 0; padding: 0; background: #06080C; font-family: 'Roboto', system-ui, sans-serif; color: #F8FAFC; }
+  * { box-sizing: border-box; }
+  .ms {
+    font-family: 'Material Symbols Outlined';
+    font-weight: normal;
+    font-style: normal;
+    line-height: 1;
+    letter-spacing: normal;
+    text-transform: none;
+    white-space: nowrap;
+    direction: ltr;
+    -webkit-font-feature-settings: 'liga';
+    font-feature-settings: 'liga';
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+  }
+  button { font-family: inherit; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="hud-tokens.jsx"></script>
+<script type="text/babel" src="hud-views.jsx"></script>
+<script type="text/babel" src="hud-chrome.jsx"></script>
+<script type="text/babel" src="hud-layout.jsx"></script>
+<script type="text/babel" src="hud-anatomy.jsx"></script>
+<script type="text/babel" src="hud-modals.jsx"></script>
+<script type="text/babel" src="hud-protocols.jsx"></script>
+<script type="text/babel" src="hud-assets.jsx"></script>
+<script type="text/babel" src="hud-features.jsx"></script>
+<script type="text/babel" src="hud-altstates.jsx"></script>
+<script type="text/babel" src="hud-altstate-configs.jsx"></script>
+
+<script type="text/babel">
+function App() {
+  return (
+    <DesignCanvas
+      title="Mira Flight — HUD (in-flight)"
+      subtitle="Galaxy Tab S10+ · 2304 × 1440 · Roboto + Material Symbols · color-state telemetry · full emergency matrix"
+    >
+      <DCSection id="primary" title="Primary mockup" subtitle="Video-primary default · color-tinted telemetry · 1-tap swap · real satellite tiles">
+        <DCArtboard id="hud-main" label="HUD · video-primary" width={2304} height={1440}>
+          <HudMain />
+        </DCArtboard>
+        <DCArtboard id="hud-alt" label="HUD · map-primary" width={2304} height={1440}>
+          <HudMain alt />
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="anatomy" title="Component anatomy" subtitle="16 numbered regions with the spec on each">
+        <DCArtboard id="hud-anatomy" label="HUD · anatomy callouts" width={2304} height={1440}>
+          <HudAnatomy />
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="altstates" title="Alt-state matrix" subtitle="9 non-nominal HUD states · same chassis, state-driven overrides · all 2304 × 1440">
+        {ALL_STATES.map((s) => (
+          <DCArtboard key={s.code} id={`alt-${s.code}`} label={`HUD · ${s.code}`} width={2304} height={1440}>
+            <HudAltState state={s}/>
+          </DCArtboard>
+        ))}
+      </DCSection>
+
+      <DCSection id="modals" title="Confirmation modals + banners" subtitle="Every interrupt with a hold-to-confirm gate where destructive">
+        <DCArtboard id="hud-modals" label="Modals · banners · toasts" width={2304} height={1860}>
+          <Modals />
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="protocols" title="Emergency protocol matrix" subtitle="Pilot-initiated + system failsafes — with engine method + MAVLink mapping">
+        <DCArtboard id="hud-protocols" label="Protocols · dev spec" width={2304} height={1900}>
+          <Protocols />
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="assets" title="Asset library" subtitle="Icons (Material Symbols) · drone markers · geofence patterns · map sources — download URLs">
+        <DCArtboard id="hud-assets" label="Assets · downloadable" width={2304} height={2100}>
+          <Assets />
+        </DCArtboard>
+      </DCSection>
+
+      <DCSection id="features" title="Feature parity vs DJI Pilot 2 / Skydio / Auterion" subtitle="What this design covers · what's still backlog">
+        <DCArtboard id="hud-features" label="Feature checklist" width={2304} height={1820}>
+          <Features />
+        </DCArtboard>
+      </DCSection>
+    </DesignCanvas>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

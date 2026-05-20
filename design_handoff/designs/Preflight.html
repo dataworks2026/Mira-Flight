@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Mira Flight — Preflight</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&family=Roboto:wght@300;400;500;700;900&family=Roboto+Mono:wght@400;500;600;700&display=swap">
+<style>
+  html, body { margin: 0; padding: 0; background: #06080C; font-family: 'Roboto', system-ui, sans-serif; color: #F8FAFC; }
+  * { box-sizing: border-box; }
+  .ms {
+    font-family: 'Material Symbols Outlined';
+    font-weight: normal; font-style: normal; line-height: 1;
+    letter-spacing: normal; text-transform: none; white-space: nowrap;
+    -webkit-font-feature-settings: 'liga'; font-feature-settings: 'liga';
+    -webkit-font-smoothing: antialiased; user-select: none;
+  }
+  button { font-family: inherit; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="hud-tokens.jsx"></script>
+<script type="text/babel" src="builder-rails.jsx"></script>
+<script type="text/babel" src="preflight.jsx"></script>
+
+<script type="text/babel">
+function App() {
+  return (
+    <DesignCanvas
+      title="Mira Flight — Preflight"
+      subtitle="Galaxy Tab S10+ · 2304 × 1440 · single screen · 23 checks across 6 groups · red blocks, amber acknowledges"
+    >
+      <DCSection id="preflight" title="Preflight checklist + arming gate" subtitle="Drone hardware on the left · 3×2 checklist grid · mission summary + hold-to-arm on the right">
+        <DCArtboard id="preflight-screen" label="Preflight · ready to arm" width={2304} height={1440}>
+          <PreflightScreen/>
+        </DCArtboard>
+      </DCSection>
+    </DesignCanvas>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
