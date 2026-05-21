@@ -18,8 +18,9 @@ import {generateWaypoints} from '../routines/WaypointGenerator';
 import {useMissionStore} from '../store/missionStore';
 import {RoutineType, Asset} from '../types/shared';
 import {RootStackParamList} from '../App';
+import {BreadcrumbStep, BreadcrumbConnector} from '../components';
+import {T, spacing, radius, fontFamily} from '../theme/tokens';
 
-const TEAL = '#00897B';
 const ROUTINES: RoutineType[] = [
   'sweep',
   'orbit',
@@ -47,7 +48,7 @@ export default function MissionPlannerScreen() {
   const [routineType, setRoutineType] = useState<RoutineType>('orbit');
   const [altitude, setAltitude] = useState('30');
   const [speed, setSpeed] = useState('3');
-  const [radius, setRadius] = useState('50');
+  const [radiusM, setRadiusM] = useState('50');
   const [numPhotos, setNumPhotos] = useState('12');
   const [gimbalPitch, setGimbalPitch] = useState('-30');
   const [loading, setLoading] = useState(false);
@@ -100,7 +101,7 @@ export default function MissionPlannerScreen() {
       const lon = centerLon;
       const alt = parseFloat(altitude);
       const spd = parseFloat(speed);
-      const rad = parseFloat(radius);
+      const rad = parseFloat(radiusM);
       const photos = parseInt(numPhotos, 10);
       const pitch = parseFloat(gimbalPitch);
 
@@ -243,7 +244,7 @@ export default function MissionPlannerScreen() {
   if (loadingExisting) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={TEAL} />
+        <ActivityIndicator size="large" color={T.cyan} />
         <Text style={styles.loadingText}>Loading mission...</Text>
       </View>
     );
@@ -285,7 +286,7 @@ export default function MissionPlannerScreen() {
             key={i}
             coordinate={{latitude: wp.latitude, longitude: wp.longitude}}
             title={`WP ${wp.sequence_index}`}
-            pinColor={TEAL}
+            pinColor={T.cyan}
           />
         ))}
         {waypoints.length > 1 && (
@@ -294,7 +295,7 @@ export default function MissionPlannerScreen() {
               latitude: wp.latitude,
               longitude: wp.longitude,
             }))}
-            strokeColor={TEAL}
+            strokeColor={T.cyan}
             strokeWidth={2}
           />
         )}
@@ -340,6 +341,14 @@ export default function MissionPlannerScreen() {
         <Text style={styles.title}>
           {isEdit ? 'Mission Details' : 'Plan Mission'}
         </Text>
+      </View>
+
+      <View style={styles.breadcrumbRow}>
+        <BreadcrumbStep index={1} label="Assets" state="done" />
+        <BreadcrumbConnector done />
+        <BreadcrumbStep index={2} label="Builder" state="active" />
+        <BreadcrumbConnector />
+        <BreadcrumbStep index={3} label="Preflight" state="next" />
       </View>
 
       <TextInput
@@ -423,8 +432,8 @@ export default function MissionPlannerScreen() {
           <Text style={styles.label}>Radius (m)</Text>
           <TextInput
             style={styles.input}
-            value={radius}
-            onChangeText={setRadius}
+            value={radiusM}
+            onChangeText={setRadiusM}
             keyboardType="numeric"
             editable={!isEdit}
           />
@@ -498,67 +507,77 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#FFF',
+    backgroundColor: T.bg,
   },
-  loadingText: {color: '#666', marginTop: 12, fontSize: 15},
-  landscapeContainer: {flex: 1, flexDirection: 'row', backgroundColor: '#FFF'},
-  formScroll: {flex: 1, backgroundColor: '#FFF', padding: 16},
-  formScrollLandscape: {flex: 1, maxWidth: '50%' as any},
+  loadingText: {color: T.t2, marginTop: 12, fontSize: 15},
+  landscapeContainer: {flex: 1, flexDirection: 'row', backgroundColor: T.bg},
+  formScroll: {flex: 1, backgroundColor: T.bg, padding: spacing.lg},
+  formScrollLandscape: {flex: 0, width: 360},
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 16,
-    marginBottom: 16,
-    gap: 12,
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
+    gap: spacing.md,
   },
-  backBtn: {fontSize: 16, color: TEAL, fontWeight: '600'},
-  title: {fontSize: 22, fontWeight: '700', color: '#333'},
+  breadcrumbRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+  },
+  backBtn: {fontSize: 16, color: T.cyan, fontWeight: '600'},
+  title: {fontSize: 22, fontWeight: '700', color: T.t1, fontFamily: fontFamily.ui},
   input: {
     borderWidth: 1,
-    borderColor: '#DDD',
-    borderRadius: 8,
-    padding: 12,
+    borderColor: T.hairline,
+    borderRadius: radius.card,
+    padding: spacing.md,
     fontSize: 15,
-    marginBottom: 12,
-    backgroundColor: '#FAFAFA',
+    marginBottom: spacing.md,
+    backgroundColor: T.panel,
+    color: T.t1,
   },
-  label: {fontSize: 13, fontWeight: '600', color: '#666', marginBottom: 4},
-  routineRow: {flexDirection: 'row', flexWrap: 'wrap', marginBottom: 12},
+  label: {fontSize: 13, fontWeight: '600', color: T.t2, marginBottom: 4, fontFamily: fontFamily.ui},
+  routineRow: {flexDirection: 'row', flexWrap: 'wrap', marginBottom: spacing.md},
   routineBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
     borderWidth: 1,
-    borderColor: '#DDD',
-    marginRight: 8,
-    marginBottom: 8,
+    borderColor: T.hairline,
+    marginRight: spacing.sm,
+    marginBottom: spacing.sm,
+    minHeight: 36,
+    justifyContent: 'center',
   },
-  routineBtnActive: {backgroundColor: TEAL, borderColor: TEAL},
-  routineText: {fontSize: 13, color: '#666'},
-  routineTextActive: {color: '#FFF'},
+  routineBtnActive: {backgroundColor: T.cyan, borderColor: T.cyan},
+  routineText: {fontSize: 13, color: T.t2, fontFamily: fontFamily.ui},
+  routineTextActive: {color: T.bg, fontWeight: '600'},
   assetBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.card,
     borderWidth: 1,
-    borderColor: '#DDD',
-    marginRight: 8,
-    marginBottom: 8,
+    borderColor: T.hairline,
+    marginRight: spacing.sm,
+    marginBottom: spacing.sm,
+    minHeight: 44,
+    justifyContent: 'center',
   },
-  assetBtnActive: {backgroundColor: TEAL, borderColor: TEAL},
-  assetText: {fontSize: 13, color: '#333', fontWeight: '600'},
-  assetTextActive: {color: '#FFF'},
-  assetSub: {fontSize: 10, color: '#999', marginTop: 2},
-  row: {flexDirection: 'row', gap: 8},
+  assetBtnActive: {backgroundColor: T.cyan, borderColor: T.cyan},
+  assetText: {fontSize: 13, color: T.t1, fontWeight: '600', fontFamily: fontFamily.ui},
+  assetTextActive: {color: T.bg},
+  assetSub: {fontSize: 10, color: T.t3, marginTop: 2},
+  row: {flexDirection: 'row', gap: spacing.sm},
   halfInput: {flex: 1},
   thirdInput: {flex: 1},
   mapContainer: {
     height: 250,
-    borderRadius: 12,
+    borderRadius: radius.card,
     overflow: 'hidden',
-    marginBottom: 12,
+    marginBottom: spacing.md,
     borderWidth: 1,
-    borderColor: '#DDD',
+    borderColor: T.hairline,
   },
   mapLandscape: {
     flex: 1,
@@ -577,31 +596,31 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   drawBtn: {
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    borderRadius: 8,
+    backgroundColor: 'rgba(10,14,20,0.85)',
+    borderRadius: radius.btn,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderWidth: 1,
-    borderColor: '#DDD',
+    borderColor: T.hairline,
   },
-  drawBtnActive: {backgroundColor: '#FF6F00', borderColor: '#FF6F00'},
-  drawBtnText: {fontSize: 12, fontWeight: '600', color: '#333'},
-  drawBtnTextActive: {color: '#FFF'},
+  drawBtnActive: {backgroundColor: T.amber, borderColor: T.amber},
+  drawBtnText: {fontSize: 12, fontWeight: '600', color: T.t1},
+  drawBtnTextActive: {color: T.bg},
   clearBtn: {
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    borderRadius: 8,
+    backgroundColor: 'rgba(10,14,20,0.85)',
+    borderRadius: radius.btn,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderWidth: 1,
-    borderColor: '#DDD',
+    borderColor: T.hairline,
   },
-  clearBtnText: {fontSize: 12, fontWeight: '600', color: '#F44336'},
+  clearBtnText: {fontSize: 12, fontWeight: '600', color: T.red},
   ptCount: {
     fontSize: 11,
-    color: '#FFF',
+    color: T.t1,
     fontWeight: '700',
     backgroundColor: 'rgba(0,0,0,0.55)',
-    borderRadius: 4,
+    borderRadius: radius.chip,
     paddingHorizontal: 4,
     paddingVertical: 2,
   },
@@ -613,15 +632,17 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.7)',
     paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 12,
+    borderRadius: radius.pill,
   },
-  waypointBadgeText: {color: '#FFF', fontSize: 12, fontWeight: '600'},
+  waypointBadgeText: {color: T.t1, fontSize: 12, fontWeight: '600'},
   createBtn: {
-    backgroundColor: TEAL,
-    borderRadius: 12,
-    padding: 16,
+    backgroundColor: T.cyan,
+    borderRadius: radius.btnLg,
+    padding: spacing.lg,
     alignItems: 'center',
+    minHeight: 56,
+    justifyContent: 'center',
   },
-  createBtnDisabled: {opacity: 0.6},
-  createBtnText: {color: '#FFF', fontSize: 16, fontWeight: '600'},
+  createBtnDisabled: {opacity: 0.5},
+  createBtnText: {color: T.bg, fontSize: 16, fontWeight: '700', fontFamily: fontFamily.ui},
 });
