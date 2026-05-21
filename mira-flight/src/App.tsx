@@ -4,6 +4,8 @@ import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import {DroneContext} from './adapters/DroneAdapter';
 import {MockAdapter} from './adapters/MockAdapter';
 import {useAuthStore} from './store/authStore';
+import {useDroneStore} from './store/droneStore';
+import {updateTelemetryStore} from './telemetry/TelemetryStore';
 import LoginScreen from './screens/LoginScreen';
 import HomeScreen from './screens/HomeScreen';
 import MissionPlannerScreen from './screens/MissionPlannerScreen';
@@ -33,6 +35,17 @@ export default function App(): React.JSX.Element {
   useEffect(() => {
     restoreSession();
   }, [restoreSession]);
+
+  useEffect(() => {
+    const unsub = adapter.onTelemetry(updateTelemetryStore);
+    adapter.connect().then(() => {
+      useDroneStore.getState().setConnected(true);
+    });
+    return () => {
+      unsub();
+      adapter.disconnect();
+    };
+  }, [adapter]);
 
   if (loading) {
     return <></>;
