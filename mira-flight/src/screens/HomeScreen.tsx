@@ -154,6 +154,11 @@ export default function HomeScreen() {
               {backgroundColor: backendOnline ? '#4CAF50' : '#F44336'},
             ]}
           />
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Fleet')}
+            style={[styles.logoutBtn, {backgroundColor: 'rgba(0,212,255,0.25)'}]}>
+            <Text style={styles.logoutText}>Fleet</Text>
+          </TouchableOpacity>
           <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn}>
             <Text style={styles.logoutText}>Logout</Text>
           </TouchableOpacity>
