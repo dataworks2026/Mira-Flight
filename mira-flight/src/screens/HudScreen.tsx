@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   useWindowDimensions,
+  ScrollView,
 } from 'react-native';
 import MapView, {Marker, Polyline} from 'react-native-maps';
 import {useNavigation, useRoute} from '@react-navigation/native';
@@ -12,27 +13,22 @@ import {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {useDrone} from '../adapters/DroneAdapter';
 import {useDroneStore} from '../store/droneStore';
 import {useMissionStore} from '../store/missionStore';
+import {useHudStore, deriveHudState, HudState} from '../store/hudStore';
 import {MissionEngine} from '../engine/MissionEngine';
 import {MissionState} from '../engine/MissionState';
 import {updateTelemetryStore} from '../telemetry/TelemetryStore';
 import {RootStackParamList} from '../App';
 import LiveVideoPlayer from '../components/LiveVideoPlayer';
+import {
+  StatusPill,
+  TelemTape,
+  FlightCtrlBtn,
+  StateBanner,
+  KV,
+} from '../components';
+import {T, health, HEALTH_COLOR, spacing, radius, fontSize, fontFamily, hitTarget} from '../theme/tokens';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
-
-const C = {
-  bg: '#0A0E14',
-  panel: '#131822',
-  card: '#1E2530',
-  brand: '#00D4FF',
-  healthy: '#10B981',
-  warn: '#F59E0B',
-  critical: '#EF4444',
-  info: '#3B82F6',
-  text1: '#F8FAFC',
-  text2: '#94A3B8',
-  text3: '#475569',
-};
 
 function formatElapsed(secs: number): string {
   const h = Math.floor(secs / 3600);
@@ -43,24 +39,151 @@ function formatElapsed(secs: number): string {
   return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
 }
 
+function formatEta(secs: number): string {
+  if (secs <= 0) return '--:--';
+  return formatElapsed(secs);
+}
+
+function statePillTone(state: HudState): 'green' | 'amber' | 'red' | 'blue' | 'cyan' {
+  switch (state) {
+    case 'FLYING': return 'green';
+    case 'PAUSED': return 'amber';
+    case 'RTH_ACTIVE': return 'blue';
+    case 'LOW_BATTERY': return 'amber';
+    case 'CRITICAL_BATTERY': return 'red';
+    case 'LOST_LINK': return 'red';
+    case 'GPS_DEGRADED': return 'amber';
+    case 'GEOFENCE_HOVER': return 'amber';
+    case 'OBSTACLE_BRAKE': return 'amber';
+    case 'MISSION_COMPLETE': return 'green';
+  }
+}
+
+function stateLabel(state: HudState): string {
+  switch (state) {
+    case 'FLYING': return 'FLYING';
+    case 'PAUSED': return 'PAUSED';
+    case 'RTH_ACTIVE': return 'RTH';
+    case 'LOW_BATTERY': return 'LOW BATT';
+    case 'CRITICAL_BATTERY': return 'AUTO-LAND';
+    case 'LOST_LINK': return 'NO LINK';
+    case 'GPS_DEGRADED': return 'ATTI MODE';
+    case 'GEOFENCE_HOVER': return 'GEOFENCE';
+    case 'OBSTACLE_BRAKE': return 'BRAKING';
+    case 'MISSION_COMPLETE': return 'COMPLETE';
+  }
+}
+
+interface BannerConfig {
+  tone: 'green' | 'amber' | 'red' | 'blue' | 'cyan';
+  icon: string;
+  title: string;
+  sub?: string;
+  countdown?: number;
+  actionLabel?: string;
+}
+
+function getBannerConfig(
+  state: HudState,
+  countdown: number | null,
+  waypointCurrent: number,
+  waypointTotal: number,
+): BannerConfig | null {
+  switch (state) {
+    case 'FLYING':
+    case 'MISSION_COMPLETE':
+      return null;
+    case 'PAUSED':
+      return {
+        tone: 'amber',
+        icon: '⏸',
+        title: `Mission paused at WP ${waypointCurrent}`,
+        sub: 'Drone holds position · gimbal locked · video continues',
+        actionLabel: 'RESUME',
+      };
+    case 'RTH_ACTIVE':
+      return {
+        tone: 'blue',
+        icon: '⌂',
+        title: 'Returning home — Smart RTH',
+        sub: 'Climbing to RTH altitude, then navigating to home pad',
+        actionLabel: 'CANCEL RTH',
+      };
+    case 'LOW_BATTERY':
+      return {
+        tone: 'amber',
+        icon: '⚡',
+        title: `Battery ${Math.round(0)}% — Auto-RTH in progress`,
+        sub: 'Tap RTH NOW to start return immediately',
+        countdown: countdown ?? 0,
+        actionLabel: 'CANCEL · CONTINUE',
+      };
+    case 'CRITICAL_BATTERY':
+      return {
+        tone: 'red',
+        icon: '⚡',
+        title: 'Critical battery — Auto-LAND in progress',
+        sub: 'Non-cancelable. E-STOP only if unsafe to land here.',
+      };
+    case 'LOST_LINK':
+      return {
+        tone: 'red',
+        icon: '⚠',
+        title: 'RC link lost — failsafe RTH imminent',
+        sub: 'No video · No RC · Drone executing failsafe RTH',
+      };
+    case 'GPS_DEGRADED':
+      return {
+        tone: 'amber',
+        icon: '◉',
+        title: 'GPS degraded — Attitude mode engaged',
+        sub: 'RTH disabled · Take manual stick control if needed',
+        actionLabel: 'TAKE STICK',
+      };
+    case 'GEOFENCE_HOVER':
+      return {
+        tone: 'amber',
+        icon: '⬡',
+        title: 'Geofence boundary reached — hovering',
+        sub: 'Drone held at fence perimeter',
+        actionLabel: 'SKIP / REROUTE',
+      };
+    case 'OBSTACLE_BRAKE':
+      return {
+        tone: 'amber',
+        icon: '⛔',
+        title: 'Obstacle detected — drone braked',
+        sub: 'Vision system stopped forward motion',
+        actionLabel: 'RETRY',
+      };
+  }
+}
+
 export default function HudScreen() {
   const navigation = useNavigation<NavProp>();
   const route = useRoute<any>();
-  const missionId = route.params?.missionId;
+  const missionId: string = route.params?.missionId;
   const adapter = useDrone();
   const {width, height} = useWindowDimensions();
-  const isLandscape = width > height;
-  const isTablet = Math.min(width, height) >= 600;
-  const isTabletLandscape = isTablet && isLandscape;
+  const isTabletLandscape = Math.min(width, height) >= 600 && width > height;
 
+  // ── Telemetry reads ────────────────────────────────────────────────
   const lat = useDroneStore(s => s.lat);
   const lon = useDroneStore(s => s.lon);
   const alt = useDroneStore(s => s.alt);
   const speed = useDroneStore(s => s.speed);
+  const vspeed = useDroneStore(s => s.vspeed);
   const battery = useDroneStore(s => s.battery);
+  const battery_voltage = useDroneStore(s => s.battery_voltage);
+  const battery_temp_c = useDroneStore(s => s.battery_temp_c);
   const satellites = useDroneStore(s => s.satellites);
   const heading = useDroneStore(s => s.heading);
+  const signal = useDroneStore(s => s.signal);
+  const rtk_status = useDroneStore(s => s.rtk_status);
+  const gimbal_pitch = useDroneStore(s => s.gimbal_pitch);
+  const telemetry_stale_since = useDroneStore(s => s.telemetry_stale_since);
 
+  // ── Mission reads ──────────────────────────────────────────────────
   const currentMission = useMissionStore(s => s.currentMission);
   const missionState = useMissionStore(s => s.missionState);
   const waypointCurrent = useMissionStore(s => s.waypointCurrent);
@@ -71,22 +194,44 @@ export default function HudScreen() {
   const setProgress = useMissionStore(s => s.setProgress);
   const incrementPhotos = useMissionStore(s => s.incrementPhotos);
 
+  // ── HUD store ──────────────────────────────────────────────────────
+  const hudState = useHudStore(s => s.hudState);
+  const viewport = useHudStore(s => s.viewport);
+  const countdownSec = useHudStore(s => s.countdownSec);
+  const setHudState = useHudStore(s => s.setHudState);
+  const setViewport = useHudStore(s => s.setViewport);
+  const startLowBatteryGrace = useHudStore(s => s.startLowBatteryGrace);
+  const cancelLowBatteryGrace = useHudStore(s => s.cancelLowBatteryGrace);
+  const tickGrace = useHudStore(s => s.tickGrace);
+  const resetHud = useHudStore(s => s.reset);
+
+  // ── Engine refs ────────────────────────────────────────────────────
   const engineRef = useRef<MissionEngine | null>(null);
   const unsubTelemetryRef = useRef<(() => void) | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const graceRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const telemetryTimestampRef = useRef<number>(Date.now());
+  const gpsDegradedSinceRef = useRef<number | null>(null);
+  const isRthActiveRef = useRef(false);
 
+  // ── PRESERVED: MissionEngine wiring (lines 79-114 original) ───────
   const startMission = useCallback(async () => {
     const isResume = currentMission?.status === 'in_progress';
     const engine = new MissionEngine(adapter);
     engineRef.current = engine;
 
-    unsubTelemetryRef.current = adapter.onTelemetry(updateTelemetryStore);
+    unsubTelemetryRef.current = adapter.onTelemetry(data => {
+      updateTelemetryStore(data);
+      telemetryTimestampRef.current = Date.now();
+      useDroneStore.getState().markTelemetryStaleSince(null);
+    });
 
     engine.onStateChange(state => {
       updateState(state);
       if (state === MissionState.COMPLETED) {
-        navigation.navigate('MissionReview', {missionId});
+        setHudState('MISSION_COMPLETE');
+        setTimeout(() => navigation.navigate('MissionReview', {missionId}), 3000);
       }
     });
 
@@ -98,43 +243,133 @@ export default function HudScreen() {
     await adapter.connect();
     useDroneStore.getState().setConnected(true);
     await engine.startMission(missionId, waypoints, isResume);
-  }, [adapter, missionId, waypoints, currentMission, navigation, updateState, setProgress, incrementPhotos]);
+  }, [adapter, missionId, waypoints, currentMission, navigation, updateState, setProgress, incrementPhotos, setHudState]);
 
   useEffect(() => {
+    resetHud();
     startMission();
     timerRef.current = setInterval(() => setElapsed(e => e + 1), 1000);
     return () => {
       unsubTelemetryRef.current?.();
       engineRef.current?.abort();
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (graceRef.current) clearInterval(graceRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleAbort = async () => {
+  // ── State machine: telemetry-driven transitions ────────────────────
+  useEffect(() => {
+    const staleMsNow = telemetry_stale_since
+      ? Date.now() - telemetry_stale_since
+      : 0;
+
+    const gpsOk = satellites >= 8 && rtk_status === 'FIX';
+    if (!gpsOk && gpsDegradedSinceRef.current === null) {
+      gpsDegradedSinceRef.current = Date.now();
+    } else if (gpsOk) {
+      gpsDegradedSinceRef.current = null;
+    }
+    const gpsDegradedMs = gpsDegradedSinceRef.current
+      ? Date.now() - gpsDegradedSinceRef.current
+      : 0;
+
+    const missionComplete = missionState === MissionState.COMPLETED;
+    const isPaused = hudState === 'PAUSED';
+
+    const next = deriveHudState(hudState, {
+      batteryPct: battery,
+      satellites,
+      rtkStatus: rtk_status,
+      telemetryStaleMs: staleMsNow,
+      missionComplete,
+      isPaused,
+      isRthActive: isRthActiveRef.current,
+      geofenceHover: false,
+      obstacleBrake: false,
+      gpsDegradedDurationMs: gpsDegradedMs,
+    });
+
+    if (next !== hudState) {
+      if (next === 'LOW_BATTERY' && hudState !== 'LOW_BATTERY') {
+        startLowBatteryGrace();
+        graceRef.current = setInterval(tickGrace, 1000);
+      }
+      if (hudState === 'LOW_BATTERY' && next !== 'LOW_BATTERY') {
+        cancelLowBatteryGrace();
+        if (graceRef.current) clearInterval(graceRef.current);
+      }
+      setHudState(next);
+    }
+
+    // Grace period expired → auto RTH
+    if (hudState === 'LOW_BATTERY' && countdownSec === 0) {
+      isRthActiveRef.current = true;
+      setHudState('RTH_ACTIVE');
+      if (graceRef.current) clearInterval(graceRef.current);
+      engineRef.current?.abort();
+    }
+  }, [battery, satellites, rtk_status, telemetry_stale_since, missionState,
+      hudState, countdownSec, setHudState, startLowBatteryGrace, cancelLowBatteryGrace, tickGrace]);
+
+  // ── PRESERVED: Flight control handlers ────────────────────────────
+  const handleAbort = useCallback(async () => {
     await engineRef.current?.abort();
     updateState(MissionState.ABORTED);
     navigation.navigate('Home');
-  };
+  }, [updateState, navigation]);
 
-  const handleRTH = async () => {
+  const handleRTH = useCallback(async () => {
+    isRthActiveRef.current = true;
+    setHudState('RTH_ACTIVE');
     await engineRef.current?.abort();
     navigation.navigate('Home');
-  };
+  }, [setHudState, navigation]);
 
+  const handleLand = useCallback(async () => {
+    await engineRef.current?.abort();
+    navigation.navigate('Home');
+  }, [navigation]);
+
+  const handleEstop = useCallback(async () => {
+    await engineRef.current?.abort();
+    updateState(MissionState.ABORTED);
+    navigation.navigate('Home');
+  }, [updateState, navigation]);
+
+  const handlePause = useCallback(async () => {
+    await engineRef.current?.pause();
+    setHudState('PAUSED');
+  }, [setHudState]);
+
+  const handleResume = useCallback(async () => {
+    await engineRef.current?.resume(waypoints);
+    setHudState('FLYING');
+  }, [waypoints, setHudState]);
+
+  // ── Derived display values ─────────────────────────────────────────
   const droneCoord = lat !== 0 ? {latitude: lat, longitude: lon} : null;
   const mapRegion = droneCoord
     ? {...droneCoord, latitudeDelta: 0.003, longitudeDelta: 0.003}
     : {latitude: 39.9612, longitude: -82.9988, latitudeDelta: 0.01, longitudeDelta: 0.01};
 
   const progressPct = waypointTotal > 0 ? (waypointCurrent / waypointTotal) * 100 : 0;
+  const battHealth = health.battery(battery);
+  const signalHealth = health.signal(signal);
+  const satsHealth = health.sats(satellites);
+  const rtkHealth = health.rtk(rtk_status);
+  const altHealth = health.altitude(alt);
+  const vspeedHealth = health.vspeed(vspeed);
+
+  const isPaused = hudState === 'PAUSED';
+  const isComplete = hudState === 'MISSION_COMPLETE';
+  const isLinkLost = hudState === 'LOST_LINK';
+  const isCritBatt = hudState === 'CRITICAL_BATTERY';
 
   const mapMarkers = (
     <>
       {droneCoord && (
-        <Marker coordinate={droneCoord} title="Drone" pinColor="#F44336" />
+        <Marker coordinate={droneCoord} title="Drone" pinColor={T.cyan} />
       )}
       {waypoints.length > 1 && (
         <Polyline
@@ -142,7 +377,7 @@ export default function HudScreen() {
             latitude: wp.latitude,
             longitude: wp.longitude,
           }))}
-          strokeColor="#00897B"
+          strokeColor={T.cyanDim}
           strokeWidth={2}
         />
       )}
@@ -151,315 +386,550 @@ export default function HudScreen() {
           key={i}
           coordinate={{latitude: wp.latitude, longitude: wp.longitude}}
           title={`WP ${wp.sequence_index}`}
-          pinColor={i < waypointCurrent ? '#4CAF50' : '#FF9800'}
-          opacity={0.7}
+          pinColor={i < waypointCurrent ? T.green : T.amber}
+          opacity={0.8}
         />
       ))}
     </>
   );
 
-  // ── Tablet landscape: 3-column layout ────────────────────────────
-  if (isTabletLandscape) {
-    const telemetryRows = [
-      {label: 'ALT', value: `${alt.toFixed(1)}`, unit: 'm', warn: false},
-      {label: 'SPD', value: `${speed.toFixed(1)}`, unit: 'm/s', warn: false},
-      {label: 'BAT', value: `${battery.toFixed(0)}`, unit: '%', warn: battery < 30},
-      {label: 'GPS', value: `${satellites}`, unit: 'sat', warn: satellites < 6},
-      {label: 'HDG', value: `${heading.toFixed(0)}`, unit: '°', warn: false},
-    ];
+  const bannerConfig = getBannerConfig(hudState, countdownSec, waypointCurrent, waypointTotal);
 
+  // ── Fallback: phone layout (minimal) ──────────────────────────────
+  if (!isTabletLandscape) {
     return (
-      <View style={t.container}>
-        {/* Top status bar */}
-        <View style={t.statusBar}>
-          <Text style={t.missionName} numberOfLines={1}>
-            {currentMission?.name ?? 'Mission'}
+      <View style={s.phoneFallback}>
+        <MapView style={s.phoneMap} region={mapRegion} initialRegion={mapRegion}>
+          {mapMarkers}
+        </MapView>
+        <View style={s.phoneTelemetry}>
+          <Text style={s.phoneTel}>ALT {alt.toFixed(1)}m</Text>
+          <Text style={s.phoneTel}>SPD {speed.toFixed(1)}m/s</Text>
+          <Text style={[s.phoneTel, battHealth !== 'ok' && {color: HEALTH_COLOR[battHealth]}]}>
+            BAT {battery.toFixed(0)}%
           </Text>
-          <Text style={t.timer}>T+ {formatElapsed(elapsed)}</Text>
-          <View style={t.statusChips}>
-            <View style={[t.chip, battery < 30 && t.chipWarn]}>
-              <Text style={t.chipText}>BAT {battery.toFixed(0)}%</Text>
-            </View>
-            <View style={[t.chip, satellites < 6 && t.chipWarn]}>
-              <Text style={t.chipText}>GPS {satellites}sat</Text>
-            </View>
-            <View style={t.chip}>
-              <Text style={t.chipText}>{missionState}</Text>
-            </View>
-          </View>
+          <Text style={s.phoneTel}>GPS {satellites}sat</Text>
         </View>
-
-        {/* Body: left | center | right */}
-        <View style={t.body}>
-          {/* Left column — telemetry */}
-          <View style={t.leftCol}>
-            {telemetryRows.map(item => (
-              <View key={item.label} style={t.telRow}>
-                <Text style={t.telLabel}>{item.label}</Text>
-                <Text style={[t.telValue, item.warn && {color: C.warn}]}>
-                  {item.value}
-                  <Text style={t.telUnit}>{item.unit}</Text>
-                </Text>
-              </View>
-            ))}
-          </View>
-
-          {/* Center — map + video */}
-          <View style={t.centerCol}>
-            <MapView style={t.map} region={mapRegion}>
-              {mapMarkers}
-            </MapView>
-            <LiveVideoPlayer style={t.video} />
-          </View>
-
-          {/* Right column — progress + actions */}
-          <View style={t.rightCol}>
-            <Text style={t.wpHeader}>Waypoints</Text>
-            <Text style={t.wpCount}>
-              {waypointCurrent} / {waypointTotal}
-            </Text>
-            <View style={t.progressTrack}>
-              <View style={[t.progressFill, {width: `${progressPct}%` as any}]} />
-            </View>
-            <Text style={t.photosLabel}>{photosCount} photos</Text>
-
-            <View style={t.actionButtons}>
-              <TouchableOpacity style={[t.actionBtn, {backgroundColor: C.info}]} onPress={() => {}}>
-                <Text style={t.actionBtnText}>PAUSE</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[t.actionBtn, {backgroundColor: C.warn}]} onPress={handleRTH}>
-                <Text style={t.actionBtnText}>RTH</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[t.actionBtn, {backgroundColor: C.healthy}]} onPress={handleRTH}>
-                <Text style={t.actionBtnText}>LAND</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-
-        {/* Abort bar */}
-        <TouchableOpacity style={t.abortBar} onPress={handleAbort}>
-          <Text style={t.abortBarText}>ABORT MISSION</Text>
+        <Text style={s.phoneTimer}>T+ {formatElapsed(elapsed)}</Text>
+        <TouchableOpacity style={s.phoneAbort} onPress={handleAbort}>
+          <Text style={s.phoneAbortText}>ABORT</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
-  // ── Phone / tablet portrait ──────────────────────────────────────
-  const telemetryItems = [
-    {label: 'ALT', value: `${alt.toFixed(1)}m`, warn: false},
-    {label: 'SPD', value: `${speed.toFixed(1)}m/s`, warn: false},
-    {label: 'BAT', value: `${battery.toFixed(0)}%`, warn: battery < 30},
-    {label: 'GPS', value: `${satellites}sat`, warn: satellites < 6},
-    {label: 'HDG', value: `${heading.toFixed(0)}°`, warn: false},
-  ];
+  // ── Tablet landscape: full 3-column HUD ───────────────────────────
+  return (
+    <View style={s.root}>
 
-  const telemetryStrip = (
-    <View style={[styles.telemetryStrip, isLandscape && styles.telemetryStripLandscape]}>
-      {telemetryItems.map(item => (
-        <View key={item.label} style={[styles.telemetryItem, isLandscape && styles.telemetryItemLandscape]}>
-          <Text style={styles.telemetryLabel}>{item.label}</Text>
-          <Text style={[styles.telemetryValue, item.warn && {color: '#F44336'}]}>
-            {item.value}
+      {/* ── TOP STRIP ──────────────────────────────────────────────── */}
+      <View style={s.topStrip}>
+        <View style={s.topLeft}>
+          <Text style={s.droneLabel}>M350-A</Text>
+          <Text style={s.missionName} numberOfLines={1}>
+            {currentMission?.name ?? 'Mission'}
           </Text>
         </View>
-      ))}
-    </View>
-  );
 
-  const progressBar = (
-    <View style={styles.progressContainer}>
-      <View style={styles.progressRow}>
-        <Text style={styles.progressText}>WP {waypointCurrent}/{waypointTotal}</Text>
-        <Text style={styles.progressText}>{photosCount} photos</Text>
-        <Text style={styles.stateText}>{missionState}</Text>
-      </View>
-      <View style={styles.progressBar}>
-        <View style={[styles.progressFill, {width: `${progressPct}%` as any}]} />
-      </View>
-    </View>
-  );
+        <StatusPill
+          tone={statePillTone(hudState)}
+          icon={<Text>{hudState === 'FLYING' ? '▶' : hudState === 'PAUSED' ? '⏸' : '!'}</Text>}
+          label={stateLabel(hudState)}
+          size="md"
+        />
 
-  if (isLandscape) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.landscapeBody}>
-          {telemetryStrip}
-          <View style={styles.landscapeMapArea}>
-            <LiveVideoPlayer style={styles.videoOverlay} />
-            <MapView style={styles.map} region={mapRegion}>
-              {mapMarkers}
-            </MapView>
-            {progressBar}
+        <View style={s.topTimers}>
+          <Text style={s.timerLabel}>T+</Text>
+          <Text style={s.timerValue}>{formatElapsed(elapsed)}</Text>
+        </View>
+
+        <View style={s.topPills}>
+          <StatusPill
+            tone={battHealth === 'ok' ? 'green' : battHealth === 'warn' ? 'amber' : 'red'}
+            icon={<Text>⚡</Text>}
+            label="BAT"
+            value={`${battery.toFixed(0)}%`}
+            size="sm"
+          />
+          <StatusPill
+            tone={satsHealth === 'ok' ? 'green' : satsHealth === 'warn' ? 'amber' : 'red'}
+            icon={<Text>◉</Text>}
+            label="GPS"
+            value={`${satellites}sat`}
+            size="sm"
+          />
+          <StatusPill
+            tone={rtkHealth === 'ok' ? 'green' : rtkHealth === 'warn' ? 'amber' : 'red'}
+            icon={<Text>⊕</Text>}
+            label="RTK"
+            value={rtk_status}
+            size="sm"
+          />
+          <StatusPill
+            tone={signalHealth === 'ok' ? 'cyan' : signalHealth === 'warn' ? 'amber' : 'red'}
+            icon={<Text>◈</Text>}
+            label="LINK"
+            value={`${signal.toFixed(0)}dBm`}
+            size="sm"
+          />
+        </View>
+
+        <Text style={s.operatorLabel}>GOV ISLAND OPS</Text>
+      </View>
+
+      {/* ── BODY: LEFT | CENTER | RIGHT ────────────────────────────── */}
+      <View style={s.body}>
+
+        {/* ── LEFT TELEM RAIL ──────────────────────────────────────── */}
+        <View style={s.leftRail}>
+          <TelemTape
+            icon={<Text style={{color: HEALTH_COLOR[altHealth]}}>↕</Text>}
+            label="ALT AGL"
+            value={alt.toFixed(1)}
+            unit="m"
+            health={altHealth}
+            big
+          />
+          <TelemTape
+            icon={<Text style={{color: T.t2}}>→</Text>}
+            label="GND SPD"
+            value={speed.toFixed(1)}
+            unit="m/s"
+            big
+          />
+          <TelemTape
+            icon={<Text style={{color: HEALTH_COLOR[vspeedHealth]}}>↕</Text>}
+            label="V SPEED"
+            value={vspeed >= 0 ? `+${vspeed.toFixed(1)}` : vspeed.toFixed(1)}
+            unit="m/s"
+            health={vspeedHealth}
+          />
+          <TelemTape
+            icon={<Text style={{color: T.t2}}>⊙</Text>}
+            label="HEADING"
+            value={heading.toFixed(0)}
+            unit="°"
+          />
+          <TelemTape
+            icon={<Text style={{color: T.t2}}>◇</Text>}
+            label="GIMBAL"
+            value={gimbal_pitch.toFixed(0)}
+            unit="°"
+            subLabel="PITCH"
+          />
+
+          {/* Battery kill-clock block */}
+          <View style={s.battBlock}>
+            <View style={s.battHeader}>
+              <Text style={s.battPct}>{battery.toFixed(0)}</Text>
+              <Text style={s.battPctUnit}>%</Text>
+            </View>
+            <Text style={s.battVolt}>{battery_voltage.toFixed(1)}V · {battery_temp_c.toFixed(0)}°C</Text>
+            <View style={s.battTrack}>
+              <View style={[s.battFill, {
+                width: `${battery}%` as any,
+                backgroundColor: HEALTH_COLOR[battHealth],
+              }]} />
+              {/* RTH tick at 25% */}
+              <View style={[s.battTick, {left: '25%'}]} />
+              {/* LAND tick at 15% */}
+              <View style={[s.battTick, {left: '15%'}]} />
+            </View>
+            <View style={s.battThresholds}>
+              <Text style={[s.battThreshLabel, {left: '15%'}]}>LAND</Text>
+              <Text style={[s.battThreshLabel, {left: '25%'}]}>RTH</Text>
+            </View>
           </View>
-          <TouchableOpacity style={styles.abortBtnLandscape} onPress={handleAbort}>
-            <Text style={styles.abortText}>ABORT</Text>
+
+          {/* GPS + RC link footer */}
+          <View style={s.railFooter}>
+            <KV label="GPS" value={`${satellites} sat`} mono inline />
+            <KV label="RTK" value={rtk_status} mono inline tone={rtkHealth === 'ok' ? 'green' : rtkHealth === 'warn' ? 'amber' : 'red'} noDivider />
+            <KV label="RC LINK" value={`${signal.toFixed(0)} dBm`} mono inline tone={signalHealth === 'ok' ? 'cyan' : signalHealth === 'warn' ? 'amber' : 'red'} noDivider />
+          </View>
+        </View>
+
+        {/* ── CENTER AREA ──────────────────────────────────────────── */}
+        <View style={s.center}>
+          {/* State banner */}
+          {bannerConfig && (
+            <StateBanner
+              tone={bannerConfig.tone}
+              icon={<Text style={{fontSize: 16}}>{bannerConfig.icon}</Text>}
+              title={bannerConfig.title}
+              sub={bannerConfig.sub}
+              countdown={bannerConfig.countdown}
+              action={bannerConfig.actionLabel ? {
+                label: bannerConfig.actionLabel,
+                onPress: isPaused ? handleResume : handleRTH,
+              } : undefined}
+            />
+          )}
+
+          {/* Main viewport */}
+          {viewport === 'video_primary' ? (
+            <>
+              <LiveVideoPlayer style={s.videoMain} />
+              {/* Map PiP */}
+              <View style={s.mapPip}>
+                <MapView style={StyleSheet.absoluteFill} initialRegion={mapRegion}>
+                  {mapMarkers}
+                </MapView>
+              </View>
+            </>
+          ) : (
+            <>
+              <MapView style={s.mapMain} initialRegion={mapRegion}>
+                {mapMarkers}
+              </MapView>
+              {/* Video PiP */}
+              <View style={s.videoPip}>
+                <LiveVideoPlayer style={StyleSheet.absoluteFill} />
+              </View>
+            </>
+          )}
+
+          {/* Viewport swap button */}
+          <TouchableOpacity
+            style={s.swapBtn}
+            onPress={() => setViewport(viewport === 'video_primary' ? 'map_primary' : 'video_primary')}
+            accessibilityLabel="Swap video and map">
+            <Text style={s.swapBtnText}>
+              {viewport === 'video_primary' ? '◉ MAP' : '▶ VIDEO'}
+            </Text>
           </TouchableOpacity>
         </View>
-      </View>
-    );
-  }
 
-  return (
-    <View style={styles.container}>
-      <MapView style={styles.map} region={mapRegion}>
-        {mapMarkers}
-      </MapView>
-      {telemetryStrip}
-      {progressBar}
-      <LiveVideoPlayer style={styles.videoOverlayPortrait} />
-      <TouchableOpacity style={styles.abortBtn} onPress={handleAbort}>
-        <Text style={styles.abortText}>ABORT</Text>
-      </TouchableOpacity>
+        {/* ── RIGHT MISSION PANEL ───────────────────────────────────── */}
+        <View style={s.rightPanel}>
+
+          {/* Mission progress card */}
+          <View style={s.progressCard}>
+            <View style={s.progressCardHeader}>
+              <Text style={s.progressFrac}>
+                {waypointCurrent} <Text style={s.progressFracOf}>/ {waypointTotal}</Text>
+              </Text>
+              <Text style={s.progressPct}>{progressPct.toFixed(0)}%</Text>
+            </View>
+            <Text style={s.progressSub}>waypoints · {photosCount} photos</Text>
+            <View style={s.progressTrack}>
+              <View style={[s.progressFill, {width: `${progressPct}%` as any}]} />
+            </View>
+            <View style={s.progressTimers}>
+              <Text style={s.progressTimerLabel}>ELAPSED</Text>
+              <Text style={s.progressTimerValue}>{formatElapsed(elapsed)}</Text>
+              <Text style={s.progressTimerLabel}>ETA</Text>
+              <Text style={s.progressTimerValue}>{formatEta(0)}</Text>
+            </View>
+          </View>
+
+          {/* Routine chip */}
+          <View style={s.routineChip}>
+            <Text style={s.routineChipText}>
+              {currentMission?.routine_type?.toUpperCase() ?? 'ORBIT'}
+            </Text>
+          </View>
+
+          {/* Waypoint list — 5 visible */}
+          <ScrollView style={s.wpList} showsVerticalScrollIndicator={false}>
+            {waypoints.slice(
+              Math.max(0, waypointCurrent - 1),
+              Math.max(0, waypointCurrent - 1) + 5,
+            ).map((wp, offset) => {
+              const globalIdx = Math.max(0, waypointCurrent - 1) + offset;
+              const isCurrent = globalIdx === waypointCurrent;
+              const isDone = globalIdx < waypointCurrent;
+              return (
+                <View
+                  key={wp.sequence_index}
+                  style={[s.wpRow, isCurrent && s.wpRowCurrent, isDone && s.wpRowDone]}>
+                  <Text style={[s.wpIndex, isCurrent && {color: T.cyan}]}>
+                    {String(wp.sequence_index).padStart(2, '0')}
+                  </Text>
+                  <Text style={[s.wpCoord, isDone && {color: T.t3}]}>
+                    {wp.latitude.toFixed(5)}, {wp.longitude.toFixed(5)}
+                  </Text>
+                  <Text style={[s.wpAlt, isDone && {color: T.t3}]}>
+                    {wp.altitude_m}m
+                  </Text>
+                </View>
+              );
+            })}
+          </ScrollView>
+
+          {/* Pause / Skip row */}
+          <View style={s.pauseRow}>
+            <TouchableOpacity
+              style={[s.pauseBtn, isPaused && {backgroundColor: T.cyan}]}
+              onPress={isPaused ? handleResume : handlePause}
+              disabled={isComplete || isLinkLost || isCritBatt}
+              accessibilityLabel={isPaused ? 'Resume mission' : 'Pause mission'}>
+              <Text style={[s.pauseBtnText, isPaused && {color: T.bg}]}>
+                {isPaused ? '▶ RESUME' : '⏸ PAUSE'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={s.skipBtn} disabled>
+              <Text style={s.skipBtnText}>⏮</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={s.skipBtn} disabled>
+              <Text style={s.skipBtnText}>⏭</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Flight control cluster — 2×2 */}
+          <View style={s.ctrlGrid}>
+            <FlightCtrlBtn
+              icon={<Text>⌂</Text>}
+              label="RTH"
+              subLabel="HOLD 2s"
+              severity="blue"
+              onPress={handleRTH}
+              disabled={isLinkLost || isCritBatt || hudState === 'GPS_DEGRADED'}
+              style={s.ctrlBtn}
+            />
+            <FlightCtrlBtn
+              icon={<Text>▼</Text>}
+              label="LAND"
+              subLabel="HOLD 2s"
+              severity="amber"
+              onPress={handleLand}
+              disabled={isLinkLost || isCritBatt}
+              style={s.ctrlBtn}
+            />
+            <FlightCtrlBtn
+              icon={<Text>✕</Text>}
+              label="ABORT"
+              subLabel="HOLD 2s"
+              severity="red"
+              onPress={handleAbort}
+              disabled={isLinkLost}
+              style={s.ctrlBtn}
+            />
+            <FlightCtrlBtn
+              icon={<Text>⏻</Text>}
+              label="E-STOP"
+              subLabel="HOLD 3s"
+              severity="red"
+              holdDuration={3000}
+              onPress={handleEstop}
+              active={isLinkLost || isCritBatt}
+              style={s.ctrlBtn}
+            />
+          </View>
+        </View>
+      </View>
     </View>
   );
 }
 
-// ── Tablet styles ────────────────────────────────────────────────
-const t = StyleSheet.create({
-  container: {flex: 1, backgroundColor: C.bg},
-  statusBar: {
-    height: 64,
+// ── Styles ─────────────────────────────────────────────────────────────────────
+const s = StyleSheet.create({
+  root: {flex: 1, backgroundColor: T.bg},
+
+  // Top strip
+  topStrip: {
+    height: 80,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: C.panel,
-    paddingHorizontal: 20,
-    gap: 16,
+    backgroundColor: T.panelHi,
+    paddingHorizontal: spacing.lg,
+    gap: spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: C.card,
+    borderBottomColor: T.hairline,
   },
-  missionName: {
-    flex: 1,
-    fontSize: 16,
-    fontWeight: '700',
-    color: C.text1,
-  },
-  timer: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: C.brand,
-    fontVariant: ['tabular-nums'],
-  },
-  statusChips: {flexDirection: 'row', gap: 8},
-  chip: {
-    backgroundColor: C.card,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  chipWarn: {backgroundColor: C.warn},
-  chipText: {fontSize: 12, fontWeight: '600', color: C.text1},
+  topLeft: {flex: 1},
+  droneLabel: {fontSize: 10, color: T.t3, fontWeight: '700', letterSpacing: 1.6, textTransform: 'uppercase', fontFamily: fontFamily.ui},
+  missionName: {fontSize: 16, fontWeight: '700', color: T.t1, fontFamily: fontFamily.ui},
+  topTimers: {flexDirection: 'row', alignItems: 'baseline', gap: 4},
+  timerLabel: {fontSize: 11, color: T.t3, fontWeight: '700', letterSpacing: 1, fontFamily: fontFamily.ui},
+  timerValue: {fontSize: 22, fontWeight: '700', color: T.cyan, fontFamily: fontFamily.mono, fontVariant: ['tabular-nums']},
+  topPills: {flexDirection: 'row', gap: spacing.sm},
+  operatorLabel: {fontSize: 11, color: T.t3, fontWeight: '700', letterSpacing: 1.6, textTransform: 'uppercase', fontFamily: fontFamily.ui},
+
+  // Body
   body: {flex: 1, flexDirection: 'row'},
-  leftCol: {
+
+  // Left rail
+  leftRail: {
     width: 280,
-    backgroundColor: C.panel,
+    backgroundColor: T.panel,
     borderRightWidth: 1,
-    borderRightColor: C.card,
-    paddingVertical: 8,
+    borderRightColor: T.hairline,
   },
-  telRow: {
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 20,
-    minHeight: 56,
+
+  // Battery kill-clock
+  battBlock: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: T.hairline,
     borderBottomWidth: 1,
-    borderBottomColor: C.card,
+    borderBottomColor: T.hairline,
   },
-  telLabel: {fontSize: 11, fontWeight: '700', color: C.text3, letterSpacing: 1},
-  telValue: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: C.text1,
-    fontVariant: ['tabular-nums'],
-    fontFamily: 'monospace',
+  battHeader: {flexDirection: 'row', alignItems: 'baseline'},
+  battPct: {fontSize: fontSize.sectionHero, fontWeight: '700', color: T.t1, fontFamily: fontFamily.mono, fontVariant: ['tabular-nums']},
+  battPctUnit: {fontSize: 18, color: T.t2, fontFamily: fontFamily.ui, marginLeft: 4},
+  battVolt: {fontSize: 11, color: T.t3, fontFamily: fontFamily.mono, marginBottom: spacing.sm},
+  battTrack: {height: 6, backgroundColor: T.card, borderRadius: radius.chip, overflow: 'hidden', position: 'relative'},
+  battFill: {height: 6, borderRadius: radius.chip},
+  battTick: {position: 'absolute', top: 0, bottom: 0, width: 2, backgroundColor: T.bg},
+  battThresholds: {flexDirection: 'row', height: 16, position: 'relative'},
+  battThreshLabel: {position: 'absolute', fontSize: 9, color: T.t3, fontFamily: fontFamily.mono, letterSpacing: 0.5},
+
+  // Rail footer
+  railFooter: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
   },
-  telUnit: {fontSize: 14, color: C.text2},
-  centerCol: {flex: 1},
-  map: {flex: 6},
-  video: {flex: 4},
-  rightCol: {
-    width: 240,
-    backgroundColor: C.panel,
+
+  // Center
+  center: {flex: 1, backgroundColor: T.bg, position: 'relative', overflow: 'hidden'},
+  videoMain: {flex: 1},
+  mapMain: {flex: 1},
+  mapPip: {
+    position: 'absolute',
+    bottom: spacing.xl,
+    left: spacing.lg,
+    width: 260,
+    height: 190,
+    borderRadius: radius.card,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: T.hairline,
+  },
+  videoPip: {
+    position: 'absolute',
+    bottom: spacing.xl,
+    right: spacing.lg,
+    width: 280,
+    height: 170,
+    borderRadius: radius.card,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: T.hairline,
+  },
+  swapBtn: {
+    position: 'absolute',
+    top: spacing.md,
+    right: spacing.md,
+    backgroundColor: T.panel,
+    borderWidth: 1,
+    borderColor: T.hairline,
+    borderRadius: radius.btn,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    minHeight: hitTarget.btn,
+    justifyContent: 'center',
+  },
+  swapBtnText: {fontSize: 12, fontWeight: '700', color: T.cyan, letterSpacing: 1, fontFamily: fontFamily.ui},
+
+  // Right panel
+  rightPanel: {
+    width: 300,
+    backgroundColor: T.panel,
     borderLeftWidth: 1,
-    borderLeftColor: C.card,
-    padding: 20,
+    borderLeftColor: T.hairline,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    gap: spacing.md,
   },
-  wpHeader: {fontSize: 11, fontWeight: '700', color: C.text3, letterSpacing: 1, marginBottom: 4},
-  wpCount: {fontSize: 32, fontWeight: '700', color: C.text1, fontVariant: ['tabular-nums'], marginBottom: 12},
-  progressTrack: {
-    height: 6,
-    backgroundColor: C.card,
-    borderRadius: 3,
-    marginBottom: 8,
+
+  // Progress card
+  progressCard: {
+    backgroundColor: T.card,
+    borderRadius: radius.card,
+    padding: spacing.md,
+    gap: spacing.sm,
   },
-  progressFill: {
-    height: 6,
-    backgroundColor: C.healthy,
-    borderRadius: 3,
+  progressCardHeader: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline'},
+  progressFrac: {fontSize: 28, fontWeight: '700', color: T.t1, fontFamily: fontFamily.mono, fontVariant: ['tabular-nums']},
+  progressFracOf: {fontSize: 16, color: T.t2},
+  progressPct: {fontSize: 20, fontWeight: '700', color: T.cyan, fontFamily: fontFamily.mono, fontVariant: ['tabular-nums']},
+  progressSub: {fontSize: 11, color: T.t3, fontFamily: fontFamily.ui},
+  progressTrack: {height: 4, backgroundColor: T.bg, borderRadius: 2},
+  progressFill: {height: 4, backgroundColor: T.cyan, borderRadius: 2},
+  progressTimers: {flexDirection: 'row', gap: spacing.md, flexWrap: 'wrap'},
+  progressTimerLabel: {fontSize: 9, color: T.t3, fontWeight: '700', letterSpacing: 1.6, textTransform: 'uppercase', fontFamily: fontFamily.ui},
+  progressTimerValue: {fontSize: 14, color: T.t1, fontFamily: fontFamily.mono, fontVariant: ['tabular-nums']},
+
+  // Routine chip
+  routineChip: {
+    backgroundColor: T.card,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    alignSelf: 'flex-start',
   },
-  photosLabel: {fontSize: 14, color: C.text2, marginBottom: 24},
-  actionButtons: {gap: 12, marginTop: 'auto' as any},
-  actionBtn: {
-    borderRadius: 6,
+  routineChipText: {fontSize: 11, fontWeight: '700', color: T.cyan, letterSpacing: 1, fontFamily: fontFamily.ui},
+
+  // WP list
+  wpList: {flex: 1, maxHeight: 180},
+  wpRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    gap: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: T.hairline2,
+  },
+  wpRowCurrent: {
+    borderLeftWidth: 3,
+    borderLeftColor: T.cyan,
+    paddingLeft: spacing.sm,
+  },
+  wpRowDone: {opacity: 0.4},
+  wpIndex: {width: 24, fontSize: 11, fontWeight: '700', color: T.t3, fontFamily: fontFamily.mono},
+  wpCoord: {flex: 1, fontSize: 10, color: T.t2, fontFamily: fontFamily.mono},
+  wpAlt: {fontSize: 10, color: T.t2, fontFamily: fontFamily.mono},
+
+  // Pause row
+  pauseRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    alignItems: 'center',
+  },
+  pauseBtn: {
+    flex: 1,
+    minHeight: hitTarget.btn,
+    backgroundColor: T.card,
+    borderRadius: radius.btn,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 56,
+    borderWidth: 1,
+    borderColor: T.hairline,
   },
-  actionBtnText: {fontSize: 15, fontWeight: '800', color: C.bg},
-  abortBar: {
-    height: 56,
-    backgroundColor: C.critical,
+  pauseBtnText: {fontSize: 13, fontWeight: '700', color: T.t1, letterSpacing: 0.8, fontFamily: fontFamily.ui},
+  skipBtn: {
+    width: hitTarget.btn,
+    height: hitTarget.btn,
+    backgroundColor: T.card,
+    borderRadius: radius.btn,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  abortBarText: {fontSize: 16, fontWeight: '800', color: C.text1, letterSpacing: 2},
+  skipBtnText: {fontSize: 18, color: T.t3},
+
+  // Control cluster
+  ctrlGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  ctrlBtn: {width: '47%'},
+
+  // Phone fallback
+  phoneFallback: {flex: 1, backgroundColor: T.bg},
+  phoneMap: {flex: 1},
+  phoneTelemetry: {
+    flexDirection: 'row',
+    backgroundColor: T.panel,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    gap: spacing.lg,
+  },
+  phoneTel: {fontSize: 13, color: T.t1, fontFamily: fontFamily.mono},
+  phoneTimer: {fontSize: 20, fontWeight: '700', color: T.cyan, textAlign: 'center', paddingVertical: spacing.sm, fontFamily: fontFamily.mono},
+  phoneAbort: {backgroundColor: T.red, paddingVertical: spacing.lg, alignItems: 'center'},
+  phoneAbortText: {fontSize: 16, fontWeight: '800', color: T.t1, letterSpacing: 2, fontFamily: fontFamily.ui},
 });
 
-// ── Phone styles (unchanged) ────────────────────────────────────
-const styles = StyleSheet.create({
-  container: {flex: 1, backgroundColor: '#1A1A1A'},
-  landscapeBody: {flex: 1, flexDirection: 'row'},
-  landscapeMapArea: {flex: 1},
-  map: {flex: 1},
-  telemetryStrip: {
-    flexDirection: 'row',
-    backgroundColor: 'rgba(0,0,0,0.85)',
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-    justifyContent: 'space-around',
-  },
-  telemetryStripLandscape: {
-    flexDirection: 'column',
-    width: 80,
-    paddingVertical: 16,
-    justifyContent: 'space-around',
-  },
-  telemetryItem: {alignItems: 'center', paddingHorizontal: 4},
-  telemetryItemLandscape: {paddingVertical: 8},
-  telemetryLabel: {color: '#888', fontSize: 10, fontWeight: '600'},
-  telemetryValue: {color: '#0F0', fontSize: 16, fontWeight: '700', fontFamily: 'monospace'},
-  progressContainer: {
-    backgroundColor: 'rgba(0,0,0,0.85)',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  progressRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-  },
-  progressText: {color: '#CCC', fontSize: 13},
-  stateText: {color: '#00897B', fontSize: 13, fontWeight: '600'},
-  progressBar: {height: 4, backgroundColor: '#333', borderRadius: 2},
-  progressFill: {height: 4, backgroundColor: '#00897B', borderRadius: 2},
-  abortBtn: {backgroundColor: '#D32F2F', paddingVertical: 14, alignItems: 'center'},
-  abortBtnLandscape: {
-    backgroundColor: '#D32F2F',
-    width: 80,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  abortText: {color: '#FFF', fontSize: 18, fontWeight: '800'},
-  videoOverlay: {position: 'absolute', top: 8, right: 8, zIndex: 10},
-  videoOverlayPortrait: {position: 'absolute', top: 8, right: 8, zIndex: 10},
-});
