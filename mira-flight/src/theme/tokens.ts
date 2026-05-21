@@ -121,7 +121,7 @@ export const letterSpacing = {
 
 export const fontFamily = {
   ui:   'Roboto',
-  mono: 'monospace', // RobotoMono-Regular if loaded via font assets
+  mono: 'RobotoMono-Regular',
 } as const;
 
 // ── Hairline width ───────────────────────────────────────────────────────────
