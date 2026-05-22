@@ -1,3 +1,4 @@
+import RNFS from 'react-native-fs';
 import {
   DroneAdapter,
   TelemetryCallback,
@@ -10,6 +11,13 @@ import {
   DroneState,
   TelemetryPoint,
 } from '../types/shared';
+
+// Minimal valid 1×1 JPEG — real file bytes so UploadWorker can POST to backend
+const MOCK_JPEG_B64 =
+  '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEB' +
+  'AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEB' +
+  'AQH/wAALCAABAAEBAREA/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL' +
+  '/9oACAEBAAA/AH+k/9k=';
 
 function uuid(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
@@ -130,8 +138,11 @@ export class MockAdapter implements DroneAdapter {
   }
 
   async capturePhoto(lens: CameraLens): Promise<CapturedPhoto> {
+    const filename = `photo_${uuid()}.jpg`;
+    const path = `${RNFS.CachesDirectoryPath}/${filename}`;
+    await RNFS.writeFile(path, MOCK_JPEG_B64, 'base64');
     return {
-      localPath: `mock://photo_${uuid()}.jpg`,
+      localPath: `file://${path}`,
       metadata: {
         lat: this.state.lat,
         lon: this.state.lon,
