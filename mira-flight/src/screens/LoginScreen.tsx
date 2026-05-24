@@ -5,9 +5,7 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   ActivityIndicator,
-  useWindowDimensions,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -16,33 +14,51 @@ import {useNavigation} from '@react-navigation/native';
 import {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {useAuthStore} from '../store/authStore';
 import {RootStackParamList} from '../App';
+import {
+  T,
+  spacing,
+  radius,
+  fontSize,
+  fontFamily,
+  hairline,
+  hitTarget,
+} from '../theme/tokens';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
+
+function hasCapsLock(text: string): boolean {
+  if (text.length < 2) {return false;}
+  const letters = text.replace(/[^a-zA-Z]/g, '');
+  return letters.length > 0 && letters === letters.toUpperCase();
+}
 
 export default function LoginScreen() {
   const navigation = useNavigation<NavProp>();
   const login = useAuthStore(s => s.login);
-  const {width, height} = useWindowDimensions();
-  const isLandscape = width > height;
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [passFocused, setPassFocused] = useState(false);
 
   const passwordRef = useRef<TextInput>(null);
-  const [showPassword, setShowPassword] = useState(false);
+
+  const capsWarning = passFocused && !showPassword && hasCapsLock(password);
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
-      Alert.alert('Error', 'Enter email and password');
+      setError('Enter email and password');
       return;
     }
+    setError('');
     setLoading(true);
     try {
       await login(email.trim(), password);
       navigation.reset({index: 0, routes: [{name: 'Home'}]});
     } catch (err: any) {
-      Alert.alert('Login Failed', err?.message || 'Invalid credentials');
+      setError(err?.message || 'Invalid credentials');
     } finally {
       setLoading(false);
     }
@@ -50,145 +66,296 @@ export default function LoginScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={s.root}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView
-        contentContainerStyle={[
-          styles.inner,
-          isLandscape && styles.innerLandscape,
-        ]}
+        contentContainerStyle={s.inner}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}>
-        <View style={[styles.card, isLandscape && styles.cardLandscape]}>
-          <Text style={styles.title}>Mira Flight</Text>
-          <Text style={styles.subtitle}>Ground Control Station</Text>
 
-          <TextInput
-            style={styles.input}
-            placeholder="Email"
-            placeholderTextColor="#475569"
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            autoCorrect={false}
-            autoFocus
-            returnKeyType="next"
-            onSubmitEditing={() => passwordRef.current?.focus()}
-            blurOnSubmit={false}
-          />
-          <View style={styles.passwordRow}>
-            <TextInput
-              ref={passwordRef}
-              style={[styles.input, styles.passwordInput]}
-              placeholder="Password"
-              placeholderTextColor="#475569"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry={!showPassword}
-              returnKeyType="done"
-              onSubmitEditing={handleLogin}
-            />
-            <TouchableOpacity
-              style={styles.eyeBtn}
-              onPress={() => setShowPassword(v => !v)}
-              hitSlop={{top: 12, bottom: 12, left: 12, right: 12}}>
-              <Text style={styles.eyeText}>{showPassword ? '🙈' : '👁'}</Text>
-            </TouchableOpacity>
+        {/* Brand lockup */}
+        <View style={s.brand}>
+          <Text style={s.brandMark}>MIRA</Text>
+          <Text style={s.brandSub}>Mira Flight</Text>
+        </View>
+
+        {/* Sign-in card */}
+        <View style={s.card}>
+          <Text style={s.eyebrow}>GROUND CONTROL STATION</Text>
+          <Text style={s.title}>Sign in</Text>
+
+          {/* Username */}
+          <View style={s.fieldBlock}>
+            <Text style={s.fieldLabel}>USERNAME</Text>
+            <View style={s.inputWrap}>
+              <Text style={s.inputIcon}>◈</Text>
+              <TextInput
+                style={s.input}
+                placeholder="pilot@org.example"
+                placeholderTextColor={T.t3}
+                value={email}
+                onChangeText={v => {setEmail(v); setError('');}}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="next"
+                onSubmitEditing={() => passwordRef.current?.focus()}
+                blurOnSubmit={false}
+              />
+            </View>
           </View>
 
+          {/* Password */}
+          <View style={s.fieldBlock}>
+            <Text style={s.fieldLabel}>PASSWORD</Text>
+            <View style={s.inputWrap}>
+              <Text style={s.inputIcon}>◉</Text>
+              <TextInput
+                ref={passwordRef}
+                style={[s.input, s.inputPass]}
+                placeholder="••••••••••••"
+                placeholderTextColor={T.t3}
+                value={password}
+                onChangeText={v => {setPassword(v); setError('');}}
+                secureTextEntry={!showPassword}
+                returnKeyType="done"
+                onSubmitEditing={handleLogin}
+                onFocus={() => setPassFocused(true)}
+                onBlur={() => setPassFocused(false)}
+              />
+              <TouchableOpacity
+                style={s.eyeBtn}
+                onPress={() => setShowPassword(v => !v)}
+                hitSlop={{top: 12, bottom: 12, left: 12, right: 12}}>
+                <Text style={s.eyeText}>{showPassword ? '○' : '◎'}</Text>
+              </TouchableOpacity>
+            </View>
+            {capsWarning && (
+              <Text style={s.capsHint}>⇪ CAPS LOCK ON</Text>
+            )}
+          </View>
+
+          {/* Inline error */}
+          {!!error && (
+            <View style={s.errorBox}>
+              <Text style={s.errorText}>{error}</Text>
+            </View>
+          )}
+
+          {/* Sign-in button */}
           <TouchableOpacity
-            style={styles.loginBtn}
+            style={[s.signInBtn, loading && s.signInBtnBusy]}
             onPress={handleLogin}
-            disabled={loading}>
+            disabled={loading}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel="Sign in">
             {loading ? (
-              <ActivityIndicator color="#F8FAFC" />
+              <ActivityIndicator size="small" color={T.bg} />
             ) : (
-              <Text style={styles.loginBtnText}>Sign In</Text>
+              <Text style={s.signInBtnText}>SIGN IN</Text>
             )}
           </TouchableOpacity>
+        </View>
+
+        {/* GCS status line */}
+        <View style={s.statusRow}>
+          <View style={s.statusDot} />
+          <Text style={s.statusText}>GCS · ONLINE</Text>
+          <Text style={s.statusDivider}>·</Text>
+          <Text style={s.statusVersion}>v1.84.3</Text>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
+const s = StyleSheet.create({
+  root: {
     flex: 1,
-    backgroundColor: '#0A0E14',
+    backgroundColor: T.bg,
   },
   inner: {
     flexGrow: 1,
     justifyContent: 'center',
-    padding: 24,
-  },
-  innerLandscape: {
     alignItems: 'center',
+    paddingVertical: spacing.xxl,
+    paddingHorizontal: spacing.xl,
   },
+
+  // Brand lockup
+  brand: {
+    alignItems: 'center',
+    marginBottom: 40,
+  },
+  brandMark: {
+    fontSize: 36,
+    fontWeight: '900',
+    color: T.cyan,
+    fontFamily: fontFamily.ui,
+    letterSpacing: 8,
+  },
+  brandSub: {
+    fontSize: fontSize.caption,
+    color: T.t3,
+    fontFamily: fontFamily.ui,
+    marginTop: 4,
+    letterSpacing: 0.1,
+  },
+
+  // Card
   card: {
-    backgroundColor: '#131822',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#1E2530',
-    padding: 32,
-    elevation: 4,
+    width: 520,
+    maxWidth: '96%',
+    backgroundColor: T.panel,
+    borderRadius: radius.panel,
+    borderWidth: hairline,
+    borderColor: T.hairline,
+    paddingHorizontal: 40,
+    paddingTop: 40,
+    paddingBottom: 32,
+    elevation: 8,
   },
-  cardLandscape: {
-    width: 480,
-    maxWidth: '80%' as any,
+  eyebrow: {
+    fontSize: fontSize.caption,
+    color: T.cyan,
+    fontFamily: fontFamily.ui,
+    fontWeight: '700',
+    letterSpacing: 0.18,
+    marginBottom: spacing.sm,
   },
   title: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#00D4FF',
-    textAlign: 'center',
+    fontSize: 26,
+    fontWeight: '700',
+    color: T.t1,
+    fontFamily: fontFamily.ui,
+    marginBottom: 28,
   },
-  subtitle: {
+
+  // Fields
+  fieldBlock: {
+    marginBottom: spacing.lg,
+  },
+  fieldLabel: {
+    fontSize: 10,
+    color: T.t3,
+    fontFamily: fontFamily.ui,
+    fontWeight: '700',
+    letterSpacing: 0.16,
+    marginBottom: spacing.xs,
+  },
+  inputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 52,
+    backgroundColor: T.panelHi,
+    borderRadius: radius.btn,
+    borderWidth: hairline,
+    borderColor: T.hairline,
+    overflow: 'hidden',
+  },
+  inputIcon: {
     fontSize: 14,
-    color: '#94A3B8',
-    textAlign: 'center',
-    marginBottom: 32,
-    marginTop: 4,
+    color: T.t3,
+    paddingLeft: 14,
+    paddingRight: 8,
   },
   input: {
-    borderWidth: 1,
-    borderColor: '#2D3748',
-    borderRadius: 6,
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    fontSize: 16,
-    marginBottom: 16,
-    backgroundColor: '#1E2530',
-    color: '#F8FAFC',
-    minHeight: 56,
+    flex: 1,
+    height: 52,
+    fontSize: fontSize.body,
+    color: T.t1,
+    fontFamily: fontFamily.ui,
+    paddingRight: spacing.md,
   },
-  loginBtn: {
-    backgroundColor: '#00D4FF',
-    borderRadius: 6,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 8,
-    minHeight: 56,
-    justifyContent: 'center',
-  },
-  loginBtnText: {color: '#0A0E14', fontSize: 17, fontWeight: '700'},
-  passwordRow: {
-    position: 'relative',
-    marginBottom: 16,
-  },
-  passwordInput: {
-    marginBottom: 0,
-    paddingRight: 52,
+  inputPass: {
+    paddingRight: 44,
   },
   eyeBtn: {
     position: 'absolute',
-    right: 14,
-    top: 0,
-    bottom: 0,
+    right: 12,
+    height: 52,
     justifyContent: 'center',
+    paddingHorizontal: spacing.xs,
   },
   eyeText: {
-    fontSize: 20,
+    fontSize: 16,
+    color: T.t3,
+  },
+  capsHint: {
+    fontSize: 10,
+    color: T.amber,
+    fontFamily: fontFamily.ui,
+    fontWeight: '600',
+    letterSpacing: 0.1,
+    marginTop: spacing.xs,
+  },
+
+  // Inline error
+  errorBox: {
+    backgroundColor: T.red + '18',
+    borderRadius: radius.btn,
+    borderWidth: hairline,
+    borderColor: T.red + '44',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  errorText: {
+    fontSize: fontSize.caption,
+    color: T.red,
+    fontFamily: fontFamily.ui,
+  },
+
+  // Sign-in button
+  signInBtn: {
+    height: hitTarget.btn,
+    backgroundColor: T.cyan,
+    borderRadius: radius.btn,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: spacing.sm,
+  },
+  signInBtnBusy: {
+    backgroundColor: T.cyanDim,
+  },
+  signInBtnText: {
+    fontSize: fontSize.body,
+    fontWeight: '700',
+    color: T.bg,
+    fontFamily: fontFamily.ui,
+    letterSpacing: 0.14,
+  },
+
+  // GCS status
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: 24,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: T.green,
+  },
+  statusText: {
+    fontSize: 11,
+    color: T.t3,
+    fontFamily: fontFamily.ui,
+    fontWeight: '600',
+    letterSpacing: 0.1,
+  },
+  statusDivider: {
+    fontSize: 11,
+    color: T.t3,
+    fontFamily: fontFamily.ui,
+  },
+  statusVersion: {
+    fontSize: 11,
+    color: T.t3,
+    fontFamily: fontFamily.ui,
+    letterSpacing: 0.1,
   },
 });
