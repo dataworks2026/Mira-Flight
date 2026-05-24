@@ -1,12 +1,21 @@
 /**
  * ArduPilotAdapter — MAVLink v1 UDP adapter for ArduPilot SITL.
- * Connects to SITL on UDP port 14550 (host) from emulator via 10.0.2.2.
- * Requires: react-native-udp
+ * Connects via UDP bridge: tablet→laptop:14550→WSL2 SITL, SITL→laptop:14553→tablet:14551.
+ * Requires: react-native-udp, react-native-fs
  */
 
+import RNFS from 'react-native-fs';
 import UdpSocket from 'react-native-udp';
+
+// 1×1 JPEG written to cache so UploadWorker can POST real bytes to backend
+const SITL_JPEG_B64 =
+  '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEB' +
+  'AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEB' +
+  'AQH/wAALCAABAAEBAREA/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL' +
+  '/9oACAEBAAA/AH+k/9k=';
 import {
   DroneAdapter,
+  DroneCapabilities,
   TelemetryCallback,
   WaypointReachedCallback,
 } from './DroneAdapter';
@@ -108,10 +117,7 @@ function buildFrame(msgId: number, payload: Uint8Array): Uint8Array {
     GCS_COMPID,
     msgId,
   ]);
-  const crcBuf = new Uint8Array(len + 1);
-  crcBuf.set(header.slice(1)); // len, seq, sysid, compid, msgid
-  crcBuf.set(payload, 5);
-  // CRC covers bytes 1..5+len (after STX)
+  // CRC covers header bytes 1..5 + payload (after STX)
   const crcInput = new Uint8Array(5 + len);
   crcInput.set(header.slice(1));
   crcInput.set(payload, 5);
@@ -360,7 +366,8 @@ export class ArduPilotAdapter implements DroneAdapter {
       });
 
       sock.on('message', (msg: Buffer | Uint8Array) => {
-        this.handleIncoming(msg instanceof Buffer ? new Uint8Array(msg) : msg);
+        // Hermes has no Buffer global — react-native-udp data is Uint8Array-compatible
+        this.handleIncoming(msg as Uint8Array);
       });
 
       sock.bind(this.listenPort, () => {
@@ -429,10 +436,52 @@ export class ArduPilotAdapter implements DroneAdapter {
     this.send(encodeCommandLong(CMD.DO_SET_MODE, 1, COPTER_MODE_AUTO));
   }
 
-  async capturePhoto(lens: CameraLens): Promise<CapturedPhoto> {
-    // SITL has no real camera — return a position-stamped placeholder
+  async pauseMission(): Promise<void> {
+    // Switch to LOITER to pause in place
+    this.send(encodeCommandLong(CMD.DO_SET_MODE, 1, 5)); // COPTER_MODE_LOITER = 5
+  }
+
+  async resumeMission(): Promise<void> {
+    // Switch back to AUTO to resume the mission
+    this.send(encodeCommandLong(CMD.DO_SET_MODE, 1, COPTER_MODE_AUTO));
+  }
+
+  async abortMission(): Promise<void> {
+    // Switch to LOITER — hover in place; caller decides RTH or land
+    this.send(encodeCommandLong(CMD.DO_SET_MODE, 1, 5)); // COPTER_MODE_LOITER = 5
+  }
+
+  async setZoom(level: number): Promise<void> {
+    // Stub — DJI zoom handled by DJIAdapter; ArduPilot has no native zoom API
+  }
+
+  async switchLens(_lens: CameraLens): Promise<void> {
+    // Stub — multi-lens switching handled by the camera payload controller
+  }
+
+  async startVideoRecording(): Promise<void> {
+    // Stub — video recording controlled by camera payload (e.g. DJI camera API)
+  }
+
+  async stopVideoRecording(): Promise<void> {
+    // Stub — video recording controlled by camera payload
+  }
+
+  getCapabilities(): DroneCapabilities {
     return {
-      localPath: `sitl://photo_${this.photoSeq++}_${lens}.jpg`,
+      lenses: ['wide', 'zoom'],
+      hasThermal: false,
+      hasLRF: false,
+      hasRTK: true,
+    };
+  }
+
+  async capturePhoto(lens: CameraLens): Promise<CapturedPhoto> {
+    const filename = `sitl_photo_${this.photoSeq++}_${lens}.jpg`;
+    const path = `${RNFS.CachesDirectoryPath}/${filename}`;
+    await RNFS.writeFile(path, SITL_JPEG_B64, 'base64');
+    return {
+      localPath: `file://${path}`,
       metadata: {
         lat: this.state.lat,
         lon: this.state.lon,
@@ -582,8 +631,8 @@ export class ArduPilotAdapter implements DroneAdapter {
       gps_fix_type: this.state.gps_fix,
       gps_satellites: this.state.satellites,
       signal_strength: this.state.signal_strength,
-      pitch_deg: (this.state as any).pitch_deg,
-      roll_deg: (this.state as any).roll_deg,
+      pitch_deg: this.state.pitch_deg,
+      roll_deg: this.state.roll_deg,
       flight_mode: this.state.flying ? 'auto' : 'guided',
     };
     for (const cb of this.telemetryCallbacks) {cb(point);}

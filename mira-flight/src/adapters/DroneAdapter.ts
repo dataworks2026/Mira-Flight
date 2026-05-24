@@ -4,6 +4,13 @@ import {Waypoint, CapturedPhoto, CameraLens, DroneState, TelemetryPoint} from '.
 export type TelemetryCallback = (point: TelemetryPoint) => void;
 export type WaypointReachedCallback = (index: number) => void;
 
+export interface DroneCapabilities {
+  lenses: CameraLens[];
+  hasThermal: boolean;
+  hasLRF: boolean;
+  hasRTK: boolean;
+}
+
 export interface DroneAdapter {
   connect(): Promise<void>;
   disconnect(): Promise<void>;
@@ -13,9 +20,17 @@ export interface DroneAdapter {
   returnToHome(): Promise<void>;
   uploadWaypoints(waypoints: Waypoint[]): Promise<void>;
   startWaypointMission(): Promise<void>;
+  pauseMission(): Promise<void>;
+  resumeMission(): Promise<void>;
+  abortMission(): Promise<void>;
   capturePhoto(lens: CameraLens): Promise<CapturedPhoto>;
   captureAllLenses(): Promise<CapturedPhoto[]>;
   setGimbal(pitch: number, yaw: number): Promise<void>;
+  setZoom(level: number): Promise<void>;
+  switchLens(lens: CameraLens): Promise<void>;
+  startVideoRecording(): Promise<void>;
+  stopVideoRecording(): Promise<void>;
+  getCapabilities(): DroneCapabilities;
   getState(): DroneState;
   isConnected(): boolean;
   onTelemetry(callback: TelemetryCallback): () => void;

@@ -1,6 +1,7 @@
 import RNFS from 'react-native-fs';
 import {
   DroneAdapter,
+  DroneCapabilities,
   TelemetryCallback,
   WaypointReachedCallback,
 } from './DroneAdapter';
@@ -52,8 +53,12 @@ export class MockAdapter implements DroneAdapter {
   private missionCompleteCallbacks: (() => void)[] = [];
   private telemetryInterval: ReturnType<typeof setInterval> | null = null;
   private missionRunning = false;
+  private missionPaused = false;
   private startPosition = {lat: 39.9612, lon: -82.9988};
   private batteryStartTime = 0;
+  private zoomLevel = 1;
+  private activeLens: CameraLens = 'wide';
+  private videoRecording = false;
 
   async connect(): Promise<void> {
     await this.delay(1000);
@@ -112,13 +117,55 @@ export class MockAdapter implements DroneAdapter {
     this.waypoints = [...waypoints];
   }
 
+  async pauseMission(): Promise<void> {
+    this.missionPaused = true;
+  }
+
+  async resumeMission(): Promise<void> {
+    this.missionPaused = false;
+  }
+
+  async abortMission(): Promise<void> {
+    this.missionRunning = false;
+    this.missionPaused = false;
+  }
+
+  async setZoom(level: number): Promise<void> {
+    this.zoomLevel = level;
+  }
+
+  async switchLens(lens: CameraLens): Promise<void> {
+    this.activeLens = lens;
+  }
+
+  async startVideoRecording(): Promise<void> {
+    this.videoRecording = true;
+  }
+
+  async stopVideoRecording(): Promise<void> {
+    this.videoRecording = false;
+  }
+
+  getCapabilities(): DroneCapabilities {
+    return {
+      lenses: ['wide', 'zoom', 'thermal', 'laser_rangefinder'],
+      hasThermal: true,
+      hasLRF: true,
+      hasRTK: true,
+    };
+  }
+
   async startWaypointMission(): Promise<void> {
     this.missionRunning = true;
+    this.missionPaused = false;
     this.startPosition = {lat: this.state.lat, lon: this.state.lon};
 
     for (let i = 0; i < this.waypoints.length; i++) {
       if (!this.missionRunning) {
         break;
+      }
+      while (this.missionPaused) {
+        await this.delay(200);
       }
       const wp = this.waypoints[i];
       await this.flyTo(wp.latitude, wp.longitude, wp.altitude_m);
