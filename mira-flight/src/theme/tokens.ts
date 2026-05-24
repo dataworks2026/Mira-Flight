@@ -34,16 +34,17 @@ export const T = {
   t3: '#475569',
 } as const;
 
-export type ToneKey = 'green' | 'amber' | 'red' | 'blue' | 'cyan' | 'slate';
+export type ToneKey = 'green' | 'amber' | 'red' | 'blue' | 'cyan' | 'slate' | 'purple';
 
 /** Map a tone name to the corresponding accent color in T. */
 export const TONE_COLOR: Record<ToneKey, string> = {
-  green: T.green,
-  amber: T.amber,
-  red:   T.red,
-  blue:  T.blue,
-  cyan:  T.cyan,
-  slate: T.slate,
+  green:  T.green,
+  amber:  T.amber,
+  red:    T.red,
+  blue:   T.blue,
+  cyan:   T.cyan,
+  slate:  T.slate,
+  purple: T.purple,
 };
 
 // ── Health thresholds ────────────────────────────────────────────────────────

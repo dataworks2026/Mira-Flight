@@ -26,6 +26,7 @@ import {
   StateBanner,
   KV,
 } from '../components';
+import {ModalRTH, ModalLand, ModalAbort, ModalEStop} from '../components/HudModals';
 import {T, health, HEALTH_COLOR, spacing, radius, fontSize, fontFamily, hitTarget} from '../theme/tokens';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
@@ -209,6 +210,7 @@ export default function HudScreen() {
   const engineRef = useRef<MissionEngine | null>(null);
   const unsubTelemetryRef = useRef<(() => void) | null>(null);
   const [elapsed, setElapsed] = useState(0);
+  const [activeModal, setActiveModal] = useState<'rth' | 'land' | 'abort' | 'estop' | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const graceRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const telemetryTimestampRef = useRef<number>(Date.now());
@@ -681,43 +683,80 @@ export default function HudScreen() {
             <FlightCtrlBtn
               icon={<Text>⌂</Text>}
               label="RTH"
-              subLabel="HOLD 2s"
+              subLabel="CONFIRM"
               severity="blue"
-              onPress={handleRTH}
+              onPress={() => setActiveModal('rth')}
               disabled={isLinkLost || isCritBatt || hudState === 'GPS_DEGRADED'}
               style={s.ctrlBtn}
             />
             <FlightCtrlBtn
               icon={<Text>▼</Text>}
               label="LAND"
-              subLabel="HOLD 2s"
+              subLabel="CONFIRM"
               severity="amber"
-              onPress={handleLand}
+              onPress={() => setActiveModal('land')}
               disabled={isLinkLost || isCritBatt}
               style={s.ctrlBtn}
             />
             <FlightCtrlBtn
               icon={<Text>✕</Text>}
               label="ABORT"
-              subLabel="HOLD 2s"
+              subLabel="CONFIRM"
               severity="red"
-              onPress={handleAbort}
+              requireHold={false}
+              onPress={() => setActiveModal('abort')}
               disabled={isLinkLost}
               style={s.ctrlBtn}
             />
             <FlightCtrlBtn
               icon={<Text>⏻</Text>}
               label="E-STOP"
-              subLabel="HOLD 3s"
+              subLabel="CONFIRM"
               severity="red"
-              holdDuration={3000}
-              onPress={handleEstop}
+              requireHold={false}
+              onPress={() => setActiveModal('estop')}
               active={isLinkLost || isCritBatt}
               style={s.ctrlBtn}
             />
           </View>
         </View>
       </View>
+
+      {/* ── HUD confirmation modals ──────────────────────────────── */}
+      <ModalRTH
+        visible={activeModal === 'rth'}
+        onConfirm={() => { setActiveModal(null); handleRTH(); }}
+        onCancel={() => setActiveModal(null)}
+        alt={alt}
+        battery={battery}
+        batteryVoltage={battery_voltage}
+        signal={signal}
+      />
+      <ModalLand
+        visible={activeModal === 'land'}
+        onConfirm={() => { setActiveModal(null); handleLand(); }}
+        onCancel={() => setActiveModal(null)}
+        alt={alt}
+        vspeed={vspeed}
+        satellites={satellites}
+        battery={battery}
+      />
+      <ModalAbort
+        visible={activeModal === 'abort'}
+        onConfirm={() => { setActiveModal(null); handleAbort(); }}
+        onCancel={() => setActiveModal(null)}
+        alt={alt}
+        battery={battery}
+        waypointCurrent={waypointCurrent}
+        waypointTotal={waypointTotal}
+        photosCount={photosCount}
+      />
+      <ModalEStop
+        visible={activeModal === 'estop'}
+        onConfirm={() => { setActiveModal(null); handleEstop(); }}
+        onCancel={() => setActiveModal(null)}
+        alt={alt}
+      />
     </View>
   );
 }
