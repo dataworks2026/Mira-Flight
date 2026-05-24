@@ -16,10 +16,18 @@ import {miraClient} from '../api/miraClient';
 import {Mission} from '../types/shared';
 import {useMissionStore} from '../store/missionStore';
 import {useAuthStore} from '../store/authStore';
+import {useConnectionStore, ConnectionStatus} from '../store/connectionStore';
 import {RootStackParamList} from '../App';
 
 const TEAL = '#00897B';
 const MINT = '#B2DFDB';
+
+const CONN_COLOR: Record<ConnectionStatus, string> = {
+  connected:    '#10B981',
+  connecting:   '#F59E0B',
+  disconnected: '#475569',
+  failed:       '#EF4444',
+};
 
 const ROUTINE_ICONS: Record<string, string> = {
   sweep: '↔',
@@ -51,6 +59,8 @@ export default function HomeScreen() {
   const setMission = useMissionStore(s => s.setMission);
   const setWaypoints = useMissionStore(s => s.setWaypoints);
   const logout = useAuthStore(s => s.logout);
+  const connStatus = useConnectionStore(s => s.status);
+  const connAdapterType = useConnectionStore(s => s.config.adapterType);
 
   const fetchMissions = useCallback(async () => {
     try {
@@ -148,12 +158,14 @@ export default function HomeScreen() {
           <Text style={styles.headerSub}>Ground Control Station</Text>
         </View>
         <View style={styles.headerRight}>
-          <View
-            style={[
-              styles.connectionDot,
-              {backgroundColor: backendOnline ? '#4CAF50' : '#F44336'},
-            ]}
-          />
+          <TouchableOpacity
+            style={styles.connPill}
+            onPress={() => navigation.navigate('ConnectionSettings')}>
+            <View style={[styles.connectionDot, {backgroundColor: CONN_COLOR[connStatus]}]}/>
+            <Text style={styles.connLabel}>
+              {connAdapterType.toUpperCase()}
+            </Text>
+          </TouchableOpacity>
           <TouchableOpacity
             onPress={() => navigation.navigate('Fleet')}
             style={[styles.logoutBtn, {backgroundColor: 'rgba(0,212,255,0.25)'}]}>
@@ -205,6 +217,18 @@ const styles = StyleSheet.create({
   headerSub: {color: 'rgba(255,255,255,0.7)', fontSize: 12, marginTop: 2},
   headerRight: {flexDirection: 'row', alignItems: 'center', gap: 12},
   connectionDot: {width: 12, height: 12, borderRadius: 6},
+  connPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: 'rgba(0,0,0,0.25)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
+  connLabel: {color: '#FFF', fontSize: 11, fontWeight: '700', letterSpacing: 0.08},
   logoutBtn: {
     paddingHorizontal: 12,
     paddingVertical: 6,
