@@ -186,7 +186,7 @@ export class MockAdapter implements DroneAdapter {
 
   async capturePhoto(lens: CameraLens): Promise<CapturedPhoto> {
     const filename = `photo_${uuid()}.jpg`;
-    const path = `${RNFS.CachesDirectoryPath}/${filename}`;
+    const path = `${RNFS.DocumentDirectoryPath}/${filename}`;
     await RNFS.writeFile(path, MOCK_JPEG_B64, 'base64');
     return {
       localPath: `file://${path}`,
