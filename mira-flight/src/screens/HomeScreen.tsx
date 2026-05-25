@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Modal,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -62,6 +63,15 @@ const CONN_LABEL: Record<ConnectionStatus, string> = {
   disconnected: 'OFFLINE',
   failed:       'FAILED',
 };
+
+type OverflowAction = {key: string; label: string; danger?: boolean};
+const OVERFLOW_ACTIONS: OverflowAction[] = [
+  {key: 'duplicate', label: 'Duplicate'},
+  {key: 'rename',    label: 'Rename'},
+  {key: 'export',    label: 'Export'},
+  {key: 'archive',   label: 'Archive'},
+  {key: 'delete',    label: 'Delete', danger: true},
+];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -209,10 +219,12 @@ function MissionCard({
   item,
   loading,
   onPress,
+  onOverflow,
 }: {
   item: Mission;
   loading: boolean;
   onPress: () => void;
+  onOverflow: () => void;
 }) {
   const tone = TONE[item.status] ?? T.slate;
   return (
@@ -244,7 +256,9 @@ function MissionCard({
         <StatCell icon="⏱" lbl="DUR" val={fmtDur(item.flight_duration_s ?? 0)} />
         <View style={mcSt.spacer} />
         <Text style={mcSt.date}>{fmtDate(item.created_at)}</Text>
-        <Text style={mcSt.more}>⋯</Text>
+        <TouchableOpacity onPress={onOverflow} activeOpacity={0.6} style={mcSt.moreBtn}>
+          <Text style={mcSt.more}>⋯</Text>
+        </TouchableOpacity>
       </View>
     </TouchableOpacity>
   );
@@ -272,6 +286,7 @@ const mcSt = StyleSheet.create({
   spacer: {flex: 1},
   date: {fontSize: 10, color: T.t3},
   more: {color: T.t2, fontSize: 16},
+  moreBtn: {padding: spacing.sm, margin: -spacing.sm},
 });
 
 // ── Skeleton card ─────────────────────────────────────────────────────────────
@@ -386,6 +401,7 @@ export default function HomeScreen() {
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterKey>('all');
   const [initialLoading, setInitialLoading] = useState(true);
+  const [overflowMission, setOverflowMission] = useState<Mission | null>(null);
 
   const setMission = useMissionStore(s => s.setMission);
   const setWaypoints = useMissionStore(s => s.setWaypoints);
@@ -578,6 +594,41 @@ export default function HomeScreen() {
         </View>
       </View>
 
+      {/* ── Overflow modal ─────────────────────────────────────────────────── */}
+      <Modal
+        visible={overflowMission !== null}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setOverflowMission(null)}>
+        <View style={omSt.root}>
+          <TouchableOpacity
+            style={omSt.scrim}
+            onPress={() => setOverflowMission(null)}
+            activeOpacity={1}
+          />
+          <View style={omSt.sheet}>
+            <View style={omSt.handle} />
+            <Text style={omSt.missionName} numberOfLines={1}>
+              {overflowMission?.name ?? ''}
+            </Text>
+            {OVERFLOW_ACTIONS.map(action => (
+              <TouchableOpacity
+                key={action.key}
+                style={omSt.item}
+                onPress={() => {
+                  setOverflowMission(null);
+                  Alert.alert(action.label, 'Coming soon');
+                }}
+                activeOpacity={0.75}>
+                <Text style={[omSt.itemTxt, action.danger && omSt.itemTxtDanger]}>
+                  {action.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      </Modal>
+
       {/* ── Mission grid ───────────────────────────────────────────────────── */}
       <FlatList<Mission>
         data={shown}
@@ -599,6 +650,7 @@ export default function HomeScreen() {
               item={item}
               loading={loadingId === item.id}
               onPress={() => handleMissionPress(item)}
+              onOverflow={() => setOverflowMission(item)}
             />
           </View>
         )}
@@ -752,4 +804,54 @@ const s = StyleSheet.create({
     marginBottom: spacing.md,
   },
   cell: {flex: 1},
+});
+
+// ── Overflow modal styles ─────────────────────────────────────────────────────
+
+const omSt = StyleSheet.create({
+  root: {flex: 1, justifyContent: 'flex-end'},
+  scrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  sheet: {
+    backgroundColor: T.panel,
+    borderTopLeftRadius: radius.panel,
+    borderTopRightRadius: radius.panel,
+    paddingBottom: spacing.xxl,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: T.hairline,
+  },
+  handle: {
+    width: 40,
+    height: 4,
+    backgroundColor: T.hairline,
+    borderRadius: radius.pill,
+    alignSelf: 'center',
+    marginBottom: spacing.lg,
+  },
+  missionName: {
+    fontSize: fontSize.body,
+    fontWeight: '700',
+    color: T.t2,
+    fontFamily: fontFamily.ui,
+    marginBottom: spacing.lg,
+    paddingBottom: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: T.hairline,
+  },
+  item: {
+    paddingVertical: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: T.hairline,
+  },
+  itemTxt: {
+    fontSize: fontSize.body,
+    color: T.t1,
+    fontFamily: fontFamily.ui,
+    fontWeight: '500',
+  },
+  itemTxtDanger: {color: T.red},
 });
