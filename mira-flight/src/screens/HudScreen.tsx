@@ -397,10 +397,20 @@ export default function HudScreen() {
 
   const bannerConfig = getBannerConfig(hudState, countdownSec, waypointCurrent, waypointTotal);
 
+  const staleSec = telemetry_stale_since
+    ? Math.round((Date.now() - telemetry_stale_since) / 1000)
+    : 0;
+  const showStaleBanner = staleSec >= 3 && hudState !== 'LOST_LINK';
+
   // ── Fallback: phone layout (minimal) ──────────────────────────────
   if (!isTabletLandscape) {
     return (
       <View style={s.phoneFallback}>
+        {showStaleBanner && (
+          <View style={s.staleBanner}>
+            <Text style={s.staleBannerText}>⚠  TELEMETRY DELAYED · {staleSec}s</Text>
+          </View>
+        )}
         <MapView style={s.phoneMap} region={mapRegion} initialRegion={mapRegion}>
           {mapMarkers}
         </MapView>
@@ -478,6 +488,12 @@ export default function HudScreen() {
 
         <Text style={s.operatorLabel}>GOV ISLAND OPS</Text>
       </View>
+
+      {showStaleBanner && (
+        <View style={s.staleBanner}>
+          <Text style={s.staleBannerText}>⚠  TELEMETRY DELAYED · {staleSec}s</Text>
+        </View>
+      )}
 
       {/* ── BODY: LEFT | CENTER | RIGHT ────────────────────────────── */}
       <View style={s.body}>
@@ -970,5 +986,20 @@ const s = StyleSheet.create({
   phoneTimer: {fontSize: 20, fontWeight: '700', color: T.cyan, textAlign: 'center', paddingVertical: spacing.sm, fontFamily: fontFamily.mono},
   phoneAbort: {backgroundColor: T.red, paddingVertical: spacing.lg, alignItems: 'center'},
   phoneAbortText: {fontSize: 16, fontWeight: '800', color: T.t1, letterSpacing: 2, fontFamily: fontFamily.ui},
+  staleBanner: {
+    backgroundColor: `${T.amber}22`,
+    borderBottomWidth: 1,
+    borderBottomColor: `${T.amber}55`,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+  },
+  staleBannerText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: T.amber,
+    fontFamily: fontFamily.mono,
+    letterSpacing: 0.1,
+  },
 });
 
