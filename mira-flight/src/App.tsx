@@ -1,4 +1,5 @@
 import React, {useEffect, useRef, useState} from 'react';
+import {StyleSheet, View} from 'react-native';
 import {NavigationContainer} from '@react-navigation/native';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import {DroneContext, DroneAdapter} from './adapters/DroneAdapter';
@@ -16,6 +17,7 @@ import HudScreen from './screens/HudScreen';
 import MissionReviewScreen from './screens/MissionReviewScreen';
 import FleetScreen from './screens/FleetScreen';
 import ConnectionSettingsScreen from './screens/ConnectionSettingsScreen';
+import {DebugLogOverlay} from './components/DebugLogOverlay';
 
 export type RootStackParamList = {
   Login: undefined;
@@ -87,24 +89,34 @@ export default function App(): React.JSX.Element {
   }
 
   return (
-    <DroneContext.Provider value={adapter}>
-      <NavigationContainer>
-        <Stack.Navigator
-          initialRouteName={token ? 'Home' : 'Login'}
-          screenOptions={{
-            headerShown: false,
-            animation: 'slide_from_right',
-          }}>
-          <Stack.Screen name="Login" component={LoginScreen} />
-          <Stack.Screen name="Home" component={HomeScreen} />
-          <Stack.Screen name="Fleet" component={FleetScreen} />
-          <Stack.Screen name="MissionPlanner" component={MissionPlannerScreen} />
-          <Stack.Screen name="Preflight" component={PreflightScreen} />
-          <Stack.Screen name="Hud" component={HudScreen} />
-          <Stack.Screen name="MissionReview" component={MissionReviewScreen} />
-          <Stack.Screen name="ConnectionSettings" component={ConnectionSettingsScreen} />
-        </Stack.Navigator>
-      </NavigationContainer>
-    </DroneContext.Provider>
+    <View style={appSt.root}>
+      <DroneContext.Provider value={adapter}>
+        <NavigationContainer>
+          <Stack.Navigator
+            initialRouteName={token ? 'Home' : 'Login'}
+            screenOptions={{
+              headerShown: false,
+              animation: 'slide_from_right',
+            }}>
+            <Stack.Screen name="Login" component={LoginScreen} />
+            <Stack.Screen name="Home" component={HomeScreen} />
+            <Stack.Screen name="Fleet" component={FleetScreen} />
+            <Stack.Screen name="MissionPlanner" component={MissionPlannerScreen} />
+            <Stack.Screen name="Preflight" component={PreflightScreen} />
+            <Stack.Screen name="Hud" component={HudScreen} />
+            <Stack.Screen name="MissionReview" component={MissionReviewScreen} />
+            <Stack.Screen
+              name="ConnectionSettings"
+              component={ConnectionSettingsScreen}
+            />
+          </Stack.Navigator>
+        </NavigationContainer>
+      </DroneContext.Provider>
+      <DebugLogOverlay />
+    </View>
   );
 }
+
+const appSt = StyleSheet.create({
+  root: {flex: 1},
+});
