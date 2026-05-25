@@ -37,6 +37,8 @@ export default function MissionReviewScreen() {
 
   const [freshMission, setFreshMission] = useState<Mission | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('summary');
+  const [retrying, setRetrying] = useState(false);
+  const [retryFailed, setRetryFailed] = useState(false);
 
   // PRESERVED — mission fetch + setAnalyzedCount
   useEffect(() => {
@@ -53,6 +55,23 @@ export default function MissionReviewScreen() {
       })
       .catch(() => {});
   }, [route.params?.missionId, mission?.id, setMission, setAnalyzedCount]);
+
+  const handleRetryUpload = async () => {
+    const id = route.params?.missionId ?? mission?.id;
+    if (!id) {return;}
+    setRetrying(true);
+    setRetryFailed(false);
+    try {
+      const m = await miraClient.getMission(id);
+      setFreshMission(m);
+      setMission(m);
+      setAnalyzedCount(m.photos_analyzed);
+    } catch {
+      setRetryFailed(true);
+    } finally {
+      setRetrying(false);
+    }
+  };
 
   // PRESERVED — reset on return home
   const handleReturnHome = () => {
@@ -164,6 +183,26 @@ export default function MissionReviewScreen() {
         <View style={[s.analyzedFill, {width: `${analyzedPct}%` as any}]} />
       </View>
       <Text style={s.uploadLabel}>{analyzed} of {total} analyzed ({analyzedPct}%)</Text>
+
+      {total > 0 && uploadPct < 100 && display?.status !== 'in_progress' && (
+        <View>
+          <View style={s.uploadFailBanner}>
+            <Text style={s.uploadFailText}>
+              ⚠  {total - uploaded} photo{total - uploaded !== 1 ? 's' : ''} not uploaded
+            </Text>
+            <TouchableOpacity
+              style={[s.retryBtn, retrying && s.retryBtnBusy]}
+              onPress={handleRetryUpload}
+              disabled={retrying}
+              activeOpacity={0.8}>
+              <Text style={s.retryBtnText}>{retrying ? 'REFRESHING…' : 'RETRY'}</Text>
+            </TouchableOpacity>
+          </View>
+          {retryFailed && (
+            <Text style={s.retryFailedText}>Refresh failed — check connection</Text>
+          )}
+        </View>
+      )}
     </View>
   );
 
@@ -404,5 +443,47 @@ const s = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     fontFamily: fontFamily.ui,
+  },
+  uploadFailBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: `${T.amber}18`,
+    borderWidth: 1,
+    borderColor: `${T.amber}55`,
+    borderRadius: radius.card,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    marginTop: spacing.md,
+  },
+  uploadFailText: {
+    flex: 1,
+    fontSize: fontSize.caption,
+    color: T.amber,
+    fontFamily: fontFamily.ui,
+    fontWeight: '600',
+  },
+  retryBtn: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.btn,
+    backgroundColor: `${T.amber}22`,
+    borderWidth: 1,
+    borderColor: `${T.amber}55`,
+  },
+  retryBtnBusy: {opacity: 0.5},
+  retryBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: T.amber,
+    fontFamily: fontFamily.ui,
+    letterSpacing: 0.1,
+  },
+  retryFailedText: {
+    fontSize: 11,
+    color: T.red,
+    fontFamily: fontFamily.ui,
+    marginTop: spacing.xs,
+    paddingHorizontal: spacing.xs,
   },
 });
