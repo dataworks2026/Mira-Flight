@@ -274,6 +274,43 @@ const mcSt = StyleSheet.create({
   more: {color: T.t2, fontSize: 16},
 });
 
+// ── Skeleton card ─────────────────────────────────────────────────────────────
+
+function SkeletonCard() {
+  return (
+    <View style={skelSt.wrap}>
+      <View style={skelSt.hdr} />
+      <View style={skelSt.line} />
+      <View style={skelSt.ftr} />
+    </View>
+  );
+}
+
+const skelSt = StyleSheet.create({
+  wrap: {
+    backgroundColor: T.card,
+    borderRadius: radius.card,
+    borderLeftWidth: 3,
+    borderLeftColor: T.panelHi,
+    overflow: 'hidden',
+    padding: spacing.md,
+  },
+  hdr: {
+    height: 14,
+    backgroundColor: T.panelHi,
+    borderRadius: 4,
+    marginBottom: 10,
+    width: '70%',
+  },
+  line: {height: 1, backgroundColor: T.hairline, marginBottom: 10},
+  ftr: {
+    height: 10,
+    backgroundColor: T.panelHi,
+    borderRadius: 4,
+    width: '50%',
+  },
+});
+
 // ── Empty state ───────────────────────────────────────────────────────────────
 
 function EmptyPanel({onNew}: {onNew: () => void}) {
@@ -348,6 +385,7 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterKey>('all');
+  const [initialLoading, setInitialLoading] = useState(true);
 
   const setMission = useMissionStore(s => s.setMission);
   const setWaypoints = useMissionStore(s => s.setWaypoints);
@@ -361,6 +399,8 @@ export default function HomeScreen() {
       setMissions(data);
     } catch {
       // network errors are non-fatal; user can pull-to-refresh
+    } finally {
+      setInitialLoading(false);
     }
   }, []);
 
@@ -563,7 +603,20 @@ export default function HomeScreen() {
           </View>
         )}
         ListEmptyComponent={
-          <EmptyPanel onNew={() => nav.navigate('MissionPlanner', {})} />
+          initialLoading ? (
+            <View>
+              <View style={s.gridRow}>
+                <View style={s.cell}><SkeletonCard /></View>
+                <View style={s.cell}><SkeletonCard /></View>
+              </View>
+              <View style={s.gridRow}>
+                <View style={s.cell}><SkeletonCard /></View>
+                <View style={s.cell}><SkeletonCard /></View>
+              </View>
+            </View>
+          ) : (
+            <EmptyPanel onNew={() => nav.navigate('MissionPlanner', {})} />
+          )
         }
       />
     </View>
