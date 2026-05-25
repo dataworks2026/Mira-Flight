@@ -8,6 +8,7 @@ import {
   AuthResponse,
   PhotoMetadata,
   Asset,
+  FlightLog,
 } from '../types/shared';
 
 const BASE_URL = 'http://3.144.48.124/api/v1';
@@ -175,5 +176,9 @@ export const miraClient = {
       image_id: imageId,
     });
     return data;
+  },
+
+  async uploadFlightLog(missionId: string, log: FlightLog): Promise<void> {
+    await api.post(`/missions/${missionId}/flight_log`, log);
   },
 };

@@ -245,3 +245,19 @@ export interface AuthResponse {
   organization_id?: string;
   organization_name?: string;
 }
+
+export type MilestoneType = 'start' | 'waypoint' | 'complete' | 'abort' | 'fail';
+
+export interface FlightMilestone {
+  type: MilestoneType;
+  ts: number;
+  data?: Record<string, unknown>;
+}
+
+export interface FlightLog {
+  mission_id: string;
+  schema_version: 1;
+  start_ts: number;
+  end_ts: number | null;
+  milestones: FlightMilestone[];
+}

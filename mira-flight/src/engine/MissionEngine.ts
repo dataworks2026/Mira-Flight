@@ -1,5 +1,6 @@
 import {DroneAdapter} from '../adapters/DroneAdapter';
 import {MissionState, transition} from './MissionState';
+import {FlightLogger} from './FlightLogger';
 import {PhotoCaptureManager} from './PhotoCaptureManager';
 import {PhotoQueue} from '../upload/PhotoQueue';
 import {UploadWorker} from '../upload/UploadWorker';
@@ -31,6 +32,7 @@ export class MissionEngine {
 
   private unsubWaypoint: (() => void) | null = null;
   private unsubComplete: (() => void) | null = null;
+  private logger: FlightLogger | null = null;
 
   constructor(adapter: DroneAdapter) {
     this.adapter = adapter;
@@ -77,6 +79,8 @@ export class MissionEngine {
     try {
       this.missionId = missionId;
       this.waypoints = waypoints;
+      this.logger = new FlightLogger(missionId);
+      this.logger.record('start', {waypointCount: waypoints.length, resume});
 
       this.setState(MissionState.PREFLIGHT);
 
@@ -104,6 +108,7 @@ export class MissionEngine {
       this.uploadWorker.start(missionId);
 
       this.unsubWaypoint = this.adapter.onWaypointReached(async index => {
+        this.logger?.record('waypoint', {index});
         for (const cb of this.progressCallbacks) {
           cb(index + 1, this.waypoints.length);
         }
@@ -147,8 +152,14 @@ export class MissionEngine {
 
       await this.pollOdm(this.missionId);
 
+      this.logger?.record('complete');
+      await this.logger?.save();
+      await this.logger?.upload();
       this.setState(MissionState.COMPLETED);
     } catch (err: any) {
+      this.logger?.record('fail', {error: String(err)});
+      await this.logger?.save();
+      await this.logger?.upload();
       this.emitError(err);
       try {
         this.setState(MissionState.FAILED);
@@ -209,6 +220,7 @@ export class MissionEngine {
 
   async abort(): Promise<void> {
     try {
+      this.logger?.record('abort');
       this.cleanup();
       await this.adapter.returnToHome();
       if (this.missionId) {
@@ -218,6 +230,8 @@ export class MissionEngine {
       for (const cb of this.stateCallbacks) {
         cb(this.state);
       }
+      await this.logger?.save();
+      await this.logger?.upload();
     } catch (err: any) {
       this.emitError(err);
     }
