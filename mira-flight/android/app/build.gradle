@@ -84,6 +84,8 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0"
+        // DJI App Key — set dji.app.key=<value> in local.properties (never commit the value)
+        buildConfigField "String", "DJI_APP_KEY", "\"${findProperty('dji.app.key') ?: ''}\""
     }
     signingConfigs {
         debug {

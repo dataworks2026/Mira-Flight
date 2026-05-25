@@ -1,6 +1,7 @@
 import {DroneAdapter} from './DroneAdapter';
 import {MockAdapter} from './MockAdapter';
 import {ArduPilotAdapter} from './ArduPilotAdapter';
+import {DJIAdapter} from './DJIAdapter';
 import {ConnectionConfig} from '../store/connectionStore';
 
 export function createAdapter(config: ConnectionConfig): DroneAdapter {
@@ -11,8 +12,7 @@ export function createAdapter(config: ConnectionConfig): DroneAdapter {
         config.sitlPort,
       );
     case 'dji':
-      // DJI adapter will be wired in E-2 once the native bridge is built
-      return new MockAdapter();
+      return new DJIAdapter();
     case 'mock':
     default:
       return new MockAdapter();
