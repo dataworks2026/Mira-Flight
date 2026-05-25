@@ -353,6 +353,7 @@ export default function HomeScreen() {
   const setWaypoints = useMissionStore(s => s.setWaypoints);
   const logout = useAuthStore(s => s.logout);
   const connStatus = useConnectionStore(s => s.status);
+  const connAdapterType = useConnectionStore(s => s.config.adapterType);
 
   const fetchMissions = useCallback(async () => {
     try {
@@ -520,6 +521,11 @@ export default function HomeScreen() {
         </View>
 
         <View style={s.stripRight}>
+          {connAdapterType === 'mock' && (
+            <View style={s.demoPill}>
+              <Text style={s.demoPillTxt}>DEMO</Text>
+            </View>
+          )}
           <TouchableOpacity
             style={s.gcsPill}
             onPress={() => nav.navigate('ConnectionSettings')}>
@@ -626,6 +632,21 @@ const s = StyleSheet.create({
     borderColor: T.hairline,
   },
   logoutTxt: {fontSize: 11, fontWeight: '600', color: T.t2},
+  demoPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+    backgroundColor: `${T.amber}22`,
+    borderWidth: 1,
+    borderColor: `${T.amber}55`,
+  },
+  demoPillTxt: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: T.amber,
+    letterSpacing: 0.12,
+    fontFamily: fontFamily.mono,
+  },
 
   // Page header
   pageHdr: {

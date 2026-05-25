@@ -68,6 +68,13 @@ export default function ConnectionSettingsScreen(): React.JSX.Element {
     }
   };
 
+  const handleDemoMode = async () => {
+    setConfig({adapterType: 'mock'});
+    await persistConfig();
+    setStatus('disconnected');
+    navigation.goBack();
+  };
+
   const handleSave = async () => {
     setSaving(true);
     setConfig(localConfig);
@@ -97,6 +104,14 @@ export default function ConnectionSettingsScreen(): React.JSX.Element {
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+        {/* Demo mode one-tap */}
+        <TouchableOpacity
+          style={styles.demoBtn}
+          onPress={handleDemoMode}
+          activeOpacity={0.8}>
+          <Text style={styles.demoBtnText}>⚡  DEMO MODE — no hardware needed</Text>
+        </TouchableOpacity>
+
         {/* Adapter picker */}
         <Text style={styles.sectionLabel}>ADAPTER</Text>
         {ADAPTER_OPTIONS.map(opt => {
@@ -466,6 +481,23 @@ const styles = StyleSheet.create({
   saveBtnText: {
     fontSize: fontSize.body,
     color: T.bg,
+    fontFamily: fontFamily.ui,
+    fontWeight: '700',
+    letterSpacing: 0.12,
+  },
+  demoBtn: {
+    height: 56,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: radius.btnLg,
+    backgroundColor: T.amber + '22',
+    borderWidth: 1.5,
+    borderColor: T.amber + '88',
+    marginTop: spacing.sm,
+  },
+  demoBtnText: {
+    fontSize: fontSize.body,
+    color: T.amber,
     fontFamily: fontFamily.ui,
     fontWeight: '700',
     letterSpacing: 0.12,
