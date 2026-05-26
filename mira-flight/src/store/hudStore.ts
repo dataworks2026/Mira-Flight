@@ -83,18 +83,12 @@ export function deriveHudState(
     gpsDegradedDurationMs: number;
   },
 ): HudState {
-  const {
-    batteryPct,
-    satellites,
-    rtkStatus,
-    telemetryStaleMs,
-    missionComplete,
-    isPaused,
-    isRthActive,
-    geofenceHover,
-    obstacleBrake,
-    gpsDegradedDurationMs,
-  } = params;
+  // Clamp all numeric inputs — NaN/Infinity must never drive state transitions.
+  const batteryPct     = isFinite(params.batteryPct) ? params.batteryPct : 100;
+  const satellites     = isFinite(params.satellites) ? Math.max(0, params.satellites) : 0;
+  const rtkStatus      = params.rtkStatus;
+  const telemetryStaleMs = isFinite(params.telemetryStaleMs) ? Math.max(0, params.telemetryStaleMs) : 0;
+  const {missionComplete, isPaused, isRthActive, geofenceHover, obstacleBrake, gpsDegradedDurationMs} = params;
 
   // Mission-complete is terminal until pilot dismisses
   if (current === 'MISSION_COMPLETE') {

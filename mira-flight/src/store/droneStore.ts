@@ -65,23 +65,30 @@ export const useDroneStore = create<DroneStoreState>(set => ({
   telemetry_stale_since: null,
 
   updateFromTelemetry: data =>
-    set({
-      lat: data.latitude,
-      lon: data.longitude,
-      alt: data.altitude_agl ?? 0,
-      heading: data.heading_deg ?? 0,
-      speed: data.speed_ms ?? 0,
-      vspeed: data.vertical_speed_ms ?? 0,
-      battery: data.battery_pct ?? 100,
-      battery_voltage: data.battery_voltage ?? 0,
-      battery_temp_c: data.battery_temp_c ?? 0,
-      gps_fix: data.gps_fix_type ?? 'none',
-      satellites: data.gps_satellites ?? 0,
-      signal: data.signal_strength ?? 0,
-      rtk_status: data.rtk_status ?? 'NONE',
-      gimbal_pitch: data.gimbal_pitch ?? 0,
-      gimbal_yaw: data.gimbal_yaw ?? 0,
-      telemetry_stale_since: null,
+    set(prev => {
+      // Guard every numeric field: NaN/Infinity/out-of-range → hold last known value.
+      const fin = (v: number | undefined, fallback: number) =>
+        v !== undefined && isFinite(v) ? v : fallback;
+      return {
+        lat: isFinite(data.latitude) ? data.latitude : prev.lat,
+        lon: isFinite(data.longitude) ? data.longitude : prev.lon,
+        alt: fin(data.altitude_agl, prev.alt),
+        heading: fin(data.heading_deg, prev.heading),
+        speed: fin(data.speed_ms, prev.speed),
+        vspeed: fin(data.vertical_speed_ms, prev.vspeed),
+        battery: Math.max(0, Math.min(100, fin(data.battery_pct, prev.battery))),
+        battery_voltage: fin(data.battery_voltage, prev.battery_voltage),
+        battery_temp_c: fin(data.battery_temp_c, prev.battery_temp_c),
+        gps_fix: data.gps_fix_type ?? prev.gps_fix,
+        satellites: data.gps_satellites !== undefined && isFinite(data.gps_satellites)
+          ? Math.max(0, Math.round(data.gps_satellites))
+          : prev.satellites,
+        signal: fin(data.signal_strength, prev.signal),
+        rtk_status: data.rtk_status ?? prev.rtk_status,
+        gimbal_pitch: fin(data.gimbal_pitch, prev.gimbal_pitch),
+        gimbal_yaw: fin(data.gimbal_yaw, prev.gimbal_yaw),
+        telemetry_stale_since: null,
+      };
     }),
 
   setConnected: val => set({connected: val}),
