@@ -27,6 +27,22 @@ SESSION.md
 design_handoff/
 
 # ════════════════════════════════════════════════════
+# SITL / test / runtime artifacts (junk — never commit)
+# ════════════════════════════════════════════════════
+TAB_STATE.json
+eeprom.bin
+mav.parm
+mav.tlog
+mav.tlog.raw
+*.tlog
+*.tlog.raw
+*.parm
+terrain/
+screen_*.png
+*.screenshot.png
+mira-flight/scripts/
+
+# ════════════════════════════════════════════════════
 # Node / React Native
 # ════════════════════════════════════════════════════
 node_modules/
