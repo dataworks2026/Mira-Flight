@@ -1,6 +1,7 @@
 /**
  * ArduPilotAdapter — MAVLink v1 UDP adapter for ArduPilot SITL.
- * Connects via UDP bridge: tablet→laptop:14550→WSL2 SITL, SITL→laptop:14553→tablet:14551.
+ * Single UDP port (default 14550): the tablet binds it locally to receive telemetry
+ * and sends commands to the same port on the SITL host (standard MAVLink GCS pattern).
  * Requires: react-native-udp, react-native-fs
  */
 
@@ -29,7 +30,9 @@ import {
 
 // ─── MAVLink constants ────────────────────────────────────────────────────────
 
-const MAVLINK_STX = 0xfe; // MAVLink v1 start byte
+const MAVLINK_STX = 0xfe; // MAVLink v1 start byte (we transmit v1; ArduPilot accepts it)
+const MAVLINK_V2_STX = 0xfd; // MAVLink v2 start byte (ArduPilot/MAVProxy default output)
+const DECODE_PAD = 64; // zero-pad payloads: MAVLink v2 truncates trailing zero bytes
 const GCS_SYSID = 255;
 const GCS_COMPID = 0;
 const TARGET_SYSID = 1;
@@ -165,8 +168,10 @@ function encodeCommandLong(
   view.setFloat32(16, p5, true);
   view.setFloat32(20, p6, true);
   view.setFloat32(24, p7, true);
-  view.setUint16(28, TARGET_SYSID, true);
-  view.setUint16(30, cmd, true);
+  // Wire order (size-sorted): command(u16), target_system(u8), target_component(u8), confirmation(u8)
+  view.setUint16(28, cmd, true);
+  p[30] = TARGET_SYSID;
+  p[31] = TARGET_COMPID;
   p[32] = confirmation;
   return buildFrame(MSG.COMMAND_LONG, p);
 }
@@ -174,8 +179,10 @@ function encodeCommandLong(
 function encodeMissionCount(count: number): Uint8Array {
   const p = new Uint8Array(4);
   const view = new DataView(p.buffer);
-  view.setUint16(0, TARGET_SYSID, true);
-  view.setUint16(2, count, true);
+  // Wire order (size-sorted): count(u16), target_system(u8), target_component(u8)
+  view.setUint16(0, count, true);
+  p[2] = TARGET_SYSID;
+  p[3] = TARGET_COMPID;
   return buildFrame(MSG.MISSION_COUNT, p);
 }
 
@@ -224,22 +231,44 @@ interface ParsedFrame {
   payload: Uint8Array;
 }
 
+// Zero-pad a (possibly v2-truncated) payload so decoders can read fixed offsets;
+// truncated trailing bytes are zero by MAVLink v2 definition.
+function padPayload(p: Uint8Array): Uint8Array {
+  if (p.length >= DECODE_PAD) {return p;}
+  const out = new Uint8Array(DECODE_PAD);
+  out.set(p);
+  return out;
+}
+
+// Parses both MAVLink v1 (0xFE) and v2 (0xFD) frames. CRC is not validated
+// (trusted link); signature trailer is skipped when the v2 incompat flag is set.
 function parseFrames(data: Uint8Array): ParsedFrame[] {
   const frames: ParsedFrame[] = [];
   let i = 0;
   while (i < data.length) {
-    if (data[i] !== MAVLINK_STX) {
+    const stx = data[i];
+    if (stx === MAVLINK_STX) {
+      // v1: STX, len, seq, sysid, compid, msgid(1), payload, crc(2)
+      if (i + 6 > data.length) {break;}
+      const len = data[i + 1];
+      const totalLen = 6 + len + 2;
+      if (i + totalLen > data.length) {break;}
+      const msgId = data[i + 5];
+      frames.push({msgId, payload: padPayload(data.slice(i + 6, i + 6 + len))});
+      i += totalLen;
+    } else if (stx === MAVLINK_V2_STX) {
+      // v2: STX, len, incompat, compat, seq, sysid, compid, msgid(3), payload, crc(2), [sig(13)]
+      if (i + 10 > data.length) {break;}
+      const len = data[i + 1];
+      const sigLen = (data[i + 2] & 0x01) !== 0 ? 13 : 0;
+      const totalLen = 10 + len + 2 + sigLen;
+      if (i + totalLen > data.length) {break;}
+      const msgId = data[i + 7] | (data[i + 8] << 8) | (data[i + 9] << 16);
+      frames.push({msgId, payload: padPayload(data.slice(i + 10, i + 10 + len))});
+      i += totalLen;
+    } else {
       i++;
-      continue;
     }
-    if (i + 5 >= data.length) {break;}
-    const len = data[i + 1];
-    const msgId = data[i + 5];
-    const totalLen = 6 + len + 2;
-    if (i + totalLen > data.length) {break;}
-    const payload = data.slice(i + 6, i + 6 + len);
-    frames.push({msgId, payload});
-    i += totalLen;
   }
   return frames;
 }
@@ -274,14 +303,17 @@ function decodeSysStatus(p: Uint8Array): Partial<DroneState> {
 
 function decodeGpsRawInt(p: Uint8Array): Partial<DroneState> {
   if (p.length < 30) {return {};}
-  const fixType = p[8]; // 0=no GPS, 1=no fix, 2=2D, 3=3D, 4=DGPS, 5=RTK Float, 6=RTK Fixed
+  const fixType = p[28]; // 0=no GPS, 1=no fix, 2=2D, 3=3D, 4=DGPS, 5=RTK Float, 6=RTK Fixed
   const satellites = p[29];
   const fixStr =
     fixType >= 6 ? 'rtk_fixed' :
     fixType === 5 ? 'rtk_float' :
     fixType >= 3 ? '3d' :
     fixType === 2 ? '2d' : 'none';
-  return {gps_fix: fixStr, satellites};
+  const rtkStatus =
+    fixType >= 6 ? 'FIX' :
+    fixType === 5 ? 'FLOAT' : 'NONE';
+  return {gps_fix: fixStr, satellites, rtk_status: rtkStatus};
 }
 
 function decodeHeartbeat(p: Uint8Array): {armed: boolean; flying: boolean; mode: number} {
@@ -295,7 +327,8 @@ function decodeHeartbeat(p: Uint8Array): {armed: boolean; flying: boolean; mode:
 
 function decodeMissionRequest(p: Uint8Array): number {
   if (p.length < 4) {return -1;}
-  return new DataView(p.buffer, p.byteOffset).getUint16(2, true);
+  // Wire order (size-sorted): seq(u16) @0, target_system(u8) @2, target_component(u8) @3
+  return new DataView(p.buffer, p.byteOffset).getUint16(0, true);
 }
 
 function decodeMissionItemReached(p: Uint8Array): number {
@@ -347,7 +380,7 @@ export class ArduPilotAdapter implements DroneAdapter {
   constructor(
     sitlHost = '10.0.2.2', // host machine from Android emulator
     sitlPort = 14550,
-    listenPort = 14551,
+    listenPort = sitlPort, // listen on the same port we send to (single-port MAVLink)
   ) {
     this.sitlHost = sitlHost;
     this.sitlPort = sitlPort;
@@ -620,7 +653,9 @@ export class ArduPilotAdapter implements DroneAdapter {
   }
 
   private emitTelemetry(): void {
-    const point: TelemetryPoint = {
+    // rtk_status is a client-only field (not in the backend TelemetryPoint schema);
+    // droneStore.updateFromTelemetry reads it to drive the HUD RTK/GPS-degraded gate.
+    const point: TelemetryPoint & {rtk_status: string} = {
       timestamp: new Date().toISOString(),
       latitude: this.state.lat,
       longitude: this.state.lon,
@@ -631,6 +666,7 @@ export class ArduPilotAdapter implements DroneAdapter {
       gps_fix_type: this.state.gps_fix,
       gps_satellites: this.state.satellites,
       signal_strength: this.state.signal_strength,
+      rtk_status: this.state.rtk_status,
       pitch_deg: this.state.pitch_deg,
       roll_deg: this.state.roll_deg,
       flight_mode: this.state.flying ? 'auto' : 'guided',
