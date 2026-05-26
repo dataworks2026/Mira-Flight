@@ -6,6 +6,7 @@ import {
   Modal,
   RefreshControl,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -462,6 +463,39 @@ export default function HomeScreen() {
     nav.reset({index: 0, routes: [{name: 'Login'}]});
   }, [logout, nav]);
 
+  const handleOverflowAction = useCallback(
+    async (key: string, mission: Mission) => {
+      switch (key) {
+        case 'duplicate':
+          try {
+            await miraClient.createMission({
+              name: `${mission.name} (copy)`,
+              routine_type: mission.routine_type,
+              asset_id: mission.asset_id,
+              description: mission.description,
+            });
+            await fetchMissions();
+          } catch {
+            Alert.alert('Error', 'Could not duplicate mission');
+          }
+          break;
+        case 'export':
+          try {
+            await Share.share({message: JSON.stringify(mission, null, 2)});
+          } catch {
+            // user cancelled share sheet
+          }
+          break;
+        default:
+          Alert.alert(
+            key.charAt(0).toUpperCase() + key.slice(1),
+            'Coming soon',
+          );
+      }
+    },
+    [fetchMissions],
+  );
+
   // KPI computations
   const thisWeekMissions = useMemo(
     () => missions.filter(m => isThisWeek(m.actual_start ?? m.created_at)),
@@ -616,8 +650,9 @@ export default function HomeScreen() {
                 key={action.key}
                 style={omSt.item}
                 onPress={() => {
+                  const m = overflowMission;
                   setOverflowMission(null);
-                  Alert.alert(action.label, 'Coming soon');
+                  if (m) {handleOverflowAction(action.key, m);}
                 }}
                 activeOpacity={0.75}>
                 <Text style={[omSt.itemTxt, action.danger && omSt.itemTxtDanger]}>
