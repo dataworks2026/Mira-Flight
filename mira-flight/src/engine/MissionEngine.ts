@@ -9,6 +9,7 @@ import {TelemetryCollector} from '../telemetry/TelemetryCollector';
 import {TelemetryUploader} from '../telemetry/TelemetryUploader';
 import {Waypoint, PhotoUploadItem} from '../types/shared';
 import {miraClient} from '../api/miraClient';
+import {miraLog} from '../store/logStore';
 
 export type StateChangeCallback = (state: MissionState) => void;
 export type ProgressCallback = (current: number, total: number) => void;
@@ -138,6 +139,29 @@ export class MissionEngine {
       await this.adapter.returnToHome();
 
       this.setState(MissionState.UPLOADING);
+
+      // DJI: photos were written to the aircraft's own storage during flight.
+      // Pull them to local disk and enqueue so they upload → backend → ODM → 3D twin.
+      if (this.adapter.downloadMissionMedia) {
+        try {
+          const media = await this.adapter.downloadMissionMedia();
+          for (const photo of media) {
+            if (!photo.localPath) {
+              continue;
+            }
+            const item: PhotoUploadItem = {
+              missionId: this.missionId,
+              localPath: photo.localPath,
+              metadata: photo.metadata,
+              waypointIndex: -1,
+            };
+            this.photoQueue.enqueue(item);
+          }
+          miraLog('info', 'DJI_MEDIA', `downloaded ${media.length} photos for upload`);
+        } catch (err) {
+          miraLog('error', 'DJI_MEDIA', `downloadMissionMedia failed: ${String(err)}`);
+        }
+      }
 
       await this.photoQueue.waitForDrain();
       this.uploadWorker.stop();

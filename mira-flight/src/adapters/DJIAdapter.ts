@@ -27,6 +27,7 @@ interface DJIBridgeInterface extends NativeModule {
   abortMission(): Promise<void>;
   capturePhoto(lens: CameraLens): Promise<CapturedPhoto>;
   captureAllLenses(): Promise<CapturedPhoto[]>;
+  downloadMissionMedia(): Promise<Array<{localPath: string; fileName: string}>>;
   setGimbal(pitch: number, yaw: number): Promise<void>;
   setZoom(level: number): Promise<void>;
   switchLens(lens: CameraLens): Promise<void>;
@@ -53,6 +54,18 @@ const INITIAL_STATE: DroneState = {
   gimbal_pitch: 0,
   gimbal_yaw: 0,
 };
+
+// H20T writes files suffixed _W (wide), _Z (zoom), _T (thermal) before the extension.
+function lensFromFileName(name: string): CameraLens {
+  const n = name.toUpperCase();
+  if (n.includes('_T')) {
+    return 'thermal';
+  }
+  if (n.includes('_Z')) {
+    return 'zoom';
+  }
+  return 'wide';
+}
 
 export class DJIAdapter implements DroneAdapter {
   private state: DroneState = {...INITIAL_STATE};
@@ -164,6 +177,25 @@ export class DJIAdapter implements DroneAdapter {
 
   async captureAllLenses(): Promise<CapturedPhoto[]> {
     return DJIBridge.captureAllLenses();
+  }
+
+  // Pull photos the H20T wrote to the aircraft SD down to local disk, then map to
+  // CapturedPhoto for the upload pipeline. Geo-metadata is best-effort from the last
+  // known telemetry; the authoritative geotag is embedded in each JPEG's EXIF.
+  async downloadMissionMedia(): Promise<CapturedPhoto[]> {
+    const files = await DJIBridge.downloadMissionMedia();
+    return files.map(f => ({
+      localPath: f.localPath,
+      metadata: {
+        lat: this.state.lat,
+        lon: this.state.lon,
+        alt: this.state.alt,
+        heading: this.state.heading,
+        gimbal_pitch: this.state.gimbal_pitch,
+        timestamp: new Date().toISOString(),
+        camera_lens: lensFromFileName(f.fileName),
+      },
+    }));
   }
 
   async setGimbal(pitch: number, yaw: number): Promise<void> {
