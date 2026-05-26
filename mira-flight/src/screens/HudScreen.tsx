@@ -6,6 +6,7 @@ import {
   StyleSheet,
   useWindowDimensions,
   ScrollView,
+  BackHandler,
 } from 'react-native';
 import MapView, {Marker, Polyline} from 'react-native-maps';
 import {useNavigation, useRoute} from '@react-navigation/native';
@@ -325,6 +326,22 @@ export default function HudScreen() {
     }
   }, [battery, satellites, rtk_status, telemetry_stale_since, missionState,
       hudState, countdownSec, setHudState, startLowBatteryGrace, cancelLowBatteryGrace, tickGrace]);
+
+  // ── Android hardware back: intercept during active flight ──────────
+  useEffect(() => {
+    const FLYING_STATES: HudState[] = [
+      'FLYING', 'PAUSED', 'RTH_ACTIVE', 'LOW_BATTERY', 'CRITICAL_BATTERY',
+      'LOST_LINK', 'GPS_DEGRADED', 'GEOFENCE_HOVER', 'OBSTACLE_BRAKE',
+    ];
+    const handler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (FLYING_STATES.includes(hudState)) {
+        setActiveModal('abort'); // show confirm before leaving mid-flight
+        return true; // consumed — do not pop the stack
+      }
+      return false; // let RN navigate back normally
+    });
+    return () => handler.remove();
+  }, [hudState, setActiveModal]);
 
   // ── PRESERVED: Flight control handlers ────────────────────────────
   const handleAbort = useCallback(async () => {
