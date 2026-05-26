@@ -20,6 +20,7 @@ import dji.sdk.keyvalue.value.camera.CameraVideoStreamSourceType
 import dji.sdk.keyvalue.value.common.ComponentIndexType
 import dji.sdk.keyvalue.value.common.LocationCoordinate3D
 import dji.sdk.keyvalue.value.common.Velocity3D
+import dji.sdk.keyvalue.value.camera.CameraMode
 import dji.v5.manager.KeyManager
 import dji.v5.common.callback.CommonCallbacks
 import dji.v5.common.error.IDJIError
@@ -28,6 +29,19 @@ import dji.v5.et.action
 import dji.v5.et.create
 import dji.v5.et.get
 import dji.v5.manager.SDKManager
+import dji.v5.manager.datacenter.MediaDataCenter
+import dji.v5.manager.datacenter.media.MediaFile
+import dji.v5.manager.datacenter.media.MediaFileDownloadListener
+import dji.v5.manager.datacenter.media.MediaFileListState
+import dji.v5.manager.datacenter.media.MediaFileListStateListener
+import dji.v5.manager.datacenter.media.PullMediaFileListParam
+import com.facebook.react.bridge.WritableArray
+import java.io.BufferedOutputStream
+import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import dji.v5.manager.aircraft.waypoint3.WaylineExecutingInfoListener
 import dji.v5.manager.aircraft.waypoint3.WaypointMissionExecuteStateListener
 import dji.v5.manager.aircraft.waypoint3.WaypointMissionManager
@@ -566,6 +580,210 @@ class DJIBridgeModule(private val reactContext: ReactApplicationContext) :
         CameraKey.KeyStopRecord.create().action({
             promise.resolve(null)
         }, { err: IDJIError -> promise.reject(ERR, "stopVideo: ${err.description()}") })
+    }
+
+    // ── Media download ──────────────────────────────────────────────────────────
+
+    /**
+     * Download the most recent (up to 40) photos from the aircraft SD card via
+     * MediaManager and resolve a WritableArray of {localPath, fileName} maps.
+     *
+     * Flow: enable() → addMediaFileListStateListener (wait for UP_TO_DATE) →
+     * pullMediaFileListFromCamera → download each file → disable() →
+     * switch camera back to PHOTO_NORMAL → resolve.
+     */
+    @ReactMethod
+    fun downloadMissionMedia(promise: Promise) {
+        Log.i(TAG, "downloadMissionMedia: enabling MediaManager")
+
+        val mediaManager = try {
+            MediaDataCenter.getInstance().mediaManager
+        } catch (e: Exception) {
+            Log.e(TAG, "downloadMissionMedia: MediaDataCenter unavailable: ${e.message}", e)
+            promise.reject(ERR, "MediaDataCenter unavailable: ${e.message}")
+            return
+        }
+
+        // Destination directory — uses app-internal filesDir; no external-storage permission needed.
+        val mediaDir = File(reactContext.filesDir, "missions/dji_media")
+        if (!mediaDir.exists()) mediaDir.mkdirs()
+
+        // We register the list-state listener *before* enable() so we don't miss the
+        // UP_TO_DATE callback that fires synchronously after pullMediaFileListFromCamera.
+        // SAM lambda — confirmed from MediaVM.kt sample (addMediaFileListStateListener { state -> }).
+        // We use a volatile flag to make the UP_TO_DATE handler idempotent; DJI's API exposes
+        // removeAllMediaFileListStateListener() but not a single-listener remove, so we guard
+        // with a flag and call removeAll once.
+        val listenerFired = AtomicBoolean(false)
+
+        val stateListener = MediaFileListStateListener { state ->
+            if (state != MediaFileListState.UP_TO_DATE) return@MediaFileListStateListener
+            if (!listenerFired.compareAndSet(false, true)) return@MediaFileListStateListener
+
+            // Remove all list-state listeners — confirmed call from DJI MediaVM.kt sample.
+            try { mediaManager.removeAllMediaFileListStateListener() } catch (e: Exception) {
+                Log.w(TAG, "removeAllMediaFileListStateListener threw: ${e.message}")
+            }
+
+            val allFiles: List<MediaFile> = try {
+                mediaManager.mediaFileListData?.data ?: emptyList()
+            } catch (e: Exception) {
+                Log.w(TAG, "downloadMissionMedia: mediaFileListData access threw: ${e.message}")
+                emptyList()
+            }
+
+            if (allFiles.isEmpty()) {
+                Log.w(TAG, "downloadMissionMedia: no files on aircraft — resolving empty list")
+                disableMediaManagerAndRestoreCamera()
+                promise.resolve(Arguments.createArray())
+                return@MediaFileListStateListener
+            }
+
+            // Take the most-recent N files (list is newest-first per MSDK spec).
+            val batch = allFiles.take(40)
+            Log.i(TAG, "downloadMissionMedia: downloading ${batch.size} of ${allFiles.size} files")
+
+            val results = Arguments.createArray()
+            val remaining = AtomicInteger(batch.size)
+
+            batch.forEach { mediaFile ->
+                val destFile = File(mediaDir, mediaFile.fileName)
+                // Resume partial download if file exists.
+                val startOffset = if (destFile.exists()) destFile.length() else 0L
+
+                try {
+                    val fos = FileOutputStream(destFile, true)
+                    val bos = BufferedOutputStream(fos)
+
+                    mediaFile.pullOriginalMediaFileFromCamera(
+                        startOffset,
+                        object : MediaFileDownloadListener {
+                            override fun onStart() {
+                                Log.d(TAG, "download start: ${mediaFile.fileName}")
+                            }
+
+                            override fun onProgress(total: Long, current: Long) {
+                                // No-op for batch; progress is not surfaced to JS.
+                            }
+
+                            override fun onRealtimeDataUpdate(data: ByteArray, position: Long) {
+                                try {
+                                    bos.write(data)
+                                    bos.flush()
+                                } catch (e: IOException) {
+                                    Log.e(TAG, "downloadMissionMedia write error ${mediaFile.fileName}: ${e.message}")
+                                }
+                            }
+
+                            override fun onFinish() {
+                                try {
+                                    bos.close()
+                                    fos.close()
+                                } catch (e: IOException) {
+                                    Log.w(TAG, "downloadMissionMedia close error ${mediaFile.fileName}: ${e.message}")
+                                }
+                                Log.i(TAG, "download finished: ${mediaFile.fileName} → ${destFile.absolutePath}")
+                                synchronized(results) {
+                                    val entry = Arguments.createMap()
+                                    entry.putString("localPath", destFile.absolutePath)
+                                    entry.putString("fileName", mediaFile.fileName)
+                                    results.pushMap(entry)
+                                }
+                                checkAllDone()
+                            }
+
+                            override fun onFailure(error: IDJIError?) {
+                                Log.w(TAG, "download failed ${mediaFile.fileName}: ${error?.description()}")
+                                try { bos.close(); fos.close() } catch (_: IOException) {}
+                                // Count this file as done (don't block the whole batch on one failure).
+                                checkAllDone()
+                            }
+
+                            private fun checkAllDone() {
+                                if (remaining.decrementAndGet() == 0) {
+                                    disableMediaManagerAndRestoreCamera()
+                                    promise.resolve(results)
+                                }
+                            }
+                        }
+                    )
+                } catch (e: Exception) {
+                    Log.e(TAG, "downloadMissionMedia: pullOriginalMediaFileFromCamera threw for ${mediaFile.fileName}: ${e.message}", e)
+                    if (remaining.decrementAndGet() == 0) {
+                        disableMediaManagerAndRestoreCamera()
+                        promise.resolve(results)
+                    }
+                }
+            }
+        }
+
+        mediaManager.addMediaFileListStateListener(stateListener)
+
+        // Enter download/playback mode.
+        mediaManager.enable(object : CommonCallbacks.CompletionCallback {
+            override fun onSuccess() {
+                Log.i(TAG, "downloadMissionMedia: MediaManager enabled — pulling file list")
+                mediaManager.pullMediaFileListFromCamera(
+                    PullMediaFileListParam.Builder().mediaFileIndex(0).count(40).build(),
+                    object : CommonCallbacks.CompletionCallback {
+                        override fun onSuccess() {
+                            Log.i(TAG, "downloadMissionMedia: pullMediaFileListFromCamera success — awaiting UP_TO_DATE")
+                            // The UP_TO_DATE callback will fire via stateListener above.
+                        }
+
+                        override fun onFailure(error: IDJIError) {
+                            Log.e(TAG, "downloadMissionMedia: pullMediaFileListFromCamera failed: ${error.description()}")
+                            try { mediaManager.removeAllMediaFileListStateListener() } catch (_: Exception) {}
+                            disableMediaManagerAndRestoreCamera()
+                            promise.reject(ERR, "pullMediaFileList: ${error.description()}")
+                        }
+                    }
+                )
+            }
+
+            override fun onFailure(error: IDJIError) {
+                Log.e(TAG, "downloadMissionMedia: MediaManager enable failed: ${error.description()}")
+                try { mediaManager.removeAllMediaFileListStateListener() } catch (_: Exception) {}
+                promise.reject(ERR, "MediaManager enable: ${error.description()}")
+            }
+        })
+    }
+
+    /**
+     * Exit MediaManager download mode and restore camera to PHOTO_NORMAL.
+     * Best-effort — failures are logged but not propagated (the download results
+     * are already resolved at the call site).
+     */
+    private fun disableMediaManagerAndRestoreCamera() {
+        val mediaManager = MediaDataCenter.getInstance().mediaManager
+        mediaManager.disable(object : CommonCallbacks.CompletionCallback {
+            override fun onSuccess() {
+                Log.i(TAG, "MediaManager disabled — restoring camera to PHOTO_NORMAL")
+                restoreCameraToPhotoNormal()
+            }
+
+            override fun onFailure(error: IDJIError) {
+                Log.w(TAG, "MediaManager disable failed: ${error.description()} — still restoring camera")
+                restoreCameraToPhotoNormal()
+            }
+        })
+    }
+
+    private fun restoreCameraToPhotoNormal() {
+        try {
+            KeyManager.getInstance().setValue(
+                KeyTools.createKey(CameraKey.KeyCameraMode, cameraIndex),
+                CameraMode.PHOTO_NORMAL,
+                object : CommonCallbacks.CompletionCallback {
+                    override fun onSuccess() { Log.i(TAG, "camera restored to PHOTO_NORMAL") }
+                    override fun onFailure(error: IDJIError) {
+                        Log.w(TAG, "restore PHOTO_NORMAL failed: ${error.description()}")
+                    }
+                }
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "restoreCameraToPhotoNormal threw: ${e.message}")
+        }
     }
 
     // ── Event emit helpers ──────────────────────────────────────────────────────

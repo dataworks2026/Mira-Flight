@@ -25,6 +25,10 @@ export interface DroneAdapter {
   abortMission(): Promise<void>;
   capturePhoto(lens: CameraLens): Promise<CapturedPhoto>;
   captureAllLenses(): Promise<CapturedPhoto[]>;
+  // Optional: pull photos that were written to the aircraft's own storage during
+  // flight down to local disk for upload (DJI H20T). Adapters that capture straight
+  // to local storage (mock) don't implement this.
+  downloadMissionMedia?(): Promise<CapturedPhoto[]>;
   setGimbal(pitch: number, yaw: number): Promise<void>;
   setZoom(level: number): Promise<void>;
   switchLens(lens: CameraLens): Promise<void>;
