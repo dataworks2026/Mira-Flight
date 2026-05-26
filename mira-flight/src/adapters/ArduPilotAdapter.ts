@@ -388,6 +388,9 @@ export class ArduPilotAdapter implements DroneAdapter {
   }
 
   async connect(): Promise<void> {
+    // Idempotent: App.tsx and the HUD both call connect(); a second bind would
+    // leak a duplicate socket + heartbeat/telemetry timers and orphan the live one.
+    if (this.connected && this.socket) {return;}
     return new Promise<void>((resolve, reject) => {
       const sock = UdpSocket.createSocket({type: 'udp4', reusePort: true});
       this.socket = sock;

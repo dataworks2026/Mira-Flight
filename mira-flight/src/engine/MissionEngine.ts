@@ -171,7 +171,9 @@ export class MissionEngine {
 
   async pause(): Promise<void> {
     try {
-      await this.adapter.returnToHome();
+      // Hold position (LOITER). Was returnToHome() — that flew the drone back to
+      // launch instead of pausing in place.
+      await this.adapter.pauseMission();
       this.telemetryCollector.stop();
       this.telemetryUploader.stop();
       this.setState(MissionState.PAUSED);
@@ -193,26 +195,12 @@ export class MissionEngine {
       }
       this.waypoints = waypoints;
       this.setState(MissionState.FLYING);
-      await this.adapter.arm();
-      await this.adapter.takeoff(waypoints[0]?.altitude_m ?? 30);
+      // Drone is still armed, airborne, and holding (LOITER) with the mission
+      // loaded — just switch back to AUTO to continue from the current waypoint.
+      // (No re-arm / re-takeoff / re-upload; that restarted the mission from WP 0.)
+      await this.adapter.resumeMission();
       this.telemetryCollector.start();
       this.telemetryUploader.start(this.missionId);
-      this.uploadWorker.start(this.missionId);
-      await this.adapter.uploadWaypoints(waypoints);
-      this.unsubWaypoint?.();
-      this.unsubComplete?.();
-      this.unsubWaypoint = this.adapter.onWaypointReached(async index => {
-        for (const cb of this.progressCallbacks) {
-          cb(index + 1, this.waypoints.length);
-        }
-        if (this.photoCaptureManager) {
-          await this.photoCaptureManager.handleWaypointReached(index, this.waypoints);
-        }
-      });
-      this.unsubComplete = this.adapter.onMissionComplete(async () => {
-        await this.onAllWaypointsComplete();
-      });
-      await this.adapter.startWaypointMission();
     } catch (err: any) {
       this.emitError(err);
     }
