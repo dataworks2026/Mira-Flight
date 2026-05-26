@@ -3,6 +3,7 @@ package com.miraflight
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import com.dji.wpmzsdk.manager.WPMZManager
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
@@ -16,12 +17,18 @@ import dji.sdk.keyvalue.key.CameraKey
 import dji.sdk.keyvalue.key.FlightControllerKey
 import dji.sdk.keyvalue.value.common.LocationCoordinate3D
 import dji.sdk.keyvalue.value.common.Velocity3D
+import dji.v5.common.callback.CommonCallbacks
 import dji.v5.common.error.IDJIError
 import dji.v5.common.register.DJISDKInitEvent
 import dji.v5.et.action
 import dji.v5.et.create
 import dji.v5.et.get
 import dji.v5.manager.SDKManager
+import dji.v5.manager.aircraft.waypoint3.WaylineExecutingInfoListener
+import dji.v5.manager.aircraft.waypoint3.WaypointMissionExecuteStateListener
+import dji.v5.manager.aircraft.waypoint3.WaypointMissionManager
+import dji.v5.manager.aircraft.waypoint3.model.WaylineExecutingInfo
+import dji.v5.manager.aircraft.waypoint3.model.WaypointMissionExecuteState
 import dji.v5.manager.interfaces.SDKManagerCallback
 import kotlin.math.sqrt
 
@@ -29,10 +36,12 @@ import kotlin.math.sqrt
  * DJI MSDK v5 native bridge (v5.18.0). App Key is read from the manifest meta-data
  * com.dji.sdk.API_KEY (injected at build time from local.properties dji.app.key).
  *
- * Implemented for the M350 demo: register, live telemetry, takeoff/land/RTH, photo.
- * Waypoint missions (uploadWaypoints/startWaypointMission/pause/resume) currently
- * no-op-resolve so the app's mission flow takes off + hovers; real autonomous wayline
- * execution via WPMZ is the remaining DJI-6 task.
+ * Implemented for the M350 demo: register, live telemetry, takeoff/land/RTH, photo,
+ * and autonomous waypoint missions (uploadWaypoints builds a WPMZ KMZ wayline via
+ * WPMZMissionBuilder → pushKMZFileToAircraft; startWaypointMission/pause/resume/abort
+ * drive WaypointMissionManager; progress + completion emit DJI events).
+ * NOTE: wayline execution is untested on hardware as of build time — verify at the
+ * aircraft. Geoid asset for WPMZ altitude is not bundled (non-fatal init warning).
  */
 class DJIBridgeModule(private val reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
@@ -49,6 +58,13 @@ class DJIBridgeModule(private val reactContext: ReactApplicationContext) :
     private var connectPromise: Promise? = null
     private var registered = false
     private var telemetryRunning = false
+
+    // ── Waypoint mission state ──────────────────────────────────────────────────
+    /** KMZ file written by uploadWaypoints; null until upload succeeds. */
+    private var kmzPath: String? = null
+    /** Mission ID derived from the KMZ file name (strip .kmz extension). */
+    private var missionId: String? = null
+    private var wpmzInitialized = false
 
     override fun getName(): String = "DJIBridge"
 
@@ -79,6 +95,8 @@ class DJIBridgeModule(private val reactContext: ReactApplicationContext) :
                 override fun onRegisterSuccess() {
                     Log.i(TAG, "DJI SDK registered")
                     registered = true
+                    initWPMZIfNeeded()
+                    registerWaypointListeners()
                     connectPromise?.resolve(null)
                     connectPromise = null
                     startTelemetry()
@@ -203,38 +221,213 @@ class DJIBridgeModule(private val reactContext: ReactApplicationContext) :
         })
     }
 
-    // ── Waypoint mission (no-op resolve for now — takeoff+hover; real WPMZ = DJI-6) ─
+    // ── WPMZ helpers ────────────────────────────────────────────────────────────
+
+    private fun initWPMZIfNeeded() {
+        if (!wpmzInitialized) {
+            WPMZManager.getInstance().init(reactContext)
+            wpmzInitialized = true
+            Log.i(TAG, "WPMZManager initialized")
+        }
+    }
+
+    private fun registerWaypointListeners() {
+        // Mission-level state: emit complete when FINISHED
+        WaypointMissionManager.getInstance()
+            .addWaypointMissionExecuteStateListener(missionStateListener)
+
+        // Wayline progress: emit waypoint-reached per waypoint index change
+        WaypointMissionManager.getInstance()
+            .addWaylineExecutingInfoListener(waylineInfoListener)
+    }
+
+    private val missionStateListener = object : WaypointMissionExecuteStateListener {
+        override fun onMissionStateUpdate(state: WaypointMissionExecuteState) {
+            Log.d(TAG, "missionExecuteState=$state")
+            if (state == WaypointMissionExecuteState.FINISHED) {
+                emitMissionComplete()
+            }
+        }
+    }
+
+    @Volatile private var lastEmittedWaypointIndex = -1
+    private val waylineInfoListener = object : WaylineExecutingInfoListener {
+        override fun onWaylineExecutingInfoUpdate(info: WaylineExecutingInfo) {
+            val idx = info.currentWaypointIndex
+            if (idx != lastEmittedWaypointIndex) {
+                lastEmittedWaypointIndex = idx
+                emitWaypointReached(idx)
+                Log.d(TAG, "waylineInfo: waypoint=$idx missionFile=${info.missionFileName}")
+            }
+        }
+
+        override fun onWaylineExecutingInterruptReasonUpdate(error: IDJIError?) {
+            Log.w(TAG, "waylineInterrupt: ${error?.description()}")
+        }
+    }
+
+    // ── Waypoint mission ─────────────────────────────────────────────────────────
 
     @ReactMethod
     fun uploadWaypoints(waypoints: ReadableArray, promise: Promise) {
-        Log.d(TAG, "uploadWaypoints count=${waypoints.size()} (no-op; WPMZ wayline pending)")
-        promise.resolve(null)
+        Log.d(TAG, "uploadWaypoints count=${waypoints.size()}")
+        if (waypoints.size() == 0) {
+            promise.reject(ERR, "waypoints array is empty")
+            return
+        }
+
+        initWPMZIfNeeded()
+
+        // Write KMZ to app-internal cache dir (no storage permission required)
+        val cacheDir = reactContext.cacheDir.absolutePath + "/waypoint"
+        val dirFile = java.io.File(cacheDir)
+        if (!dirFile.exists()) dirFile.mkdirs()
+        val kmzFileName = "mira_mission_${System.currentTimeMillis()}.kmz"
+        val kmzOutPath = "$cacheDir/$kmzFileName"
+
+        val ok = try {
+            WPMZMissionBuilder.buildAndWrite(waypoints, kmzOutPath)
+        } catch (e: Exception) {
+            Log.e(TAG, "KMZ build exception: ${e.message}", e)
+            promise.reject(ERR, "KMZ build failed: ${e.message}")
+            return
+        }
+
+        if (!ok) {
+            promise.reject(ERR, "generateKMZFile returned null — KMZ not written")
+            return
+        }
+
+        // Strip extension to get the mission ID used by WaypointMissionManager
+        val generatedMissionId = kmzFileName.removeSuffix(".kmz")
+        Log.i(TAG, "KMZ written: $kmzOutPath  missionId=$generatedMissionId")
+
+        // Push to aircraft
+        WaypointMissionManager.getInstance().pushKMZFileToAircraft(
+            kmzOutPath,
+            object : CommonCallbacks.CompletionCallbackWithProgress<Double> {
+                override fun onProgressUpdate(progress: Double) {
+                    Log.d(TAG, "KMZ upload progress: $progress")
+                }
+
+                override fun onSuccess() {
+                    Log.i(TAG, "KMZ pushed to aircraft — missionId=$generatedMissionId")
+                    kmzPath = kmzOutPath
+                    missionId = generatedMissionId
+                    promise.resolve(null)
+                }
+
+                override fun onFailure(error: IDJIError) {
+                    Log.e(TAG, "pushKMZFileToAircraft failed: ${error.description()}")
+                    promise.reject(ERR, "pushKMZ: ${error.description()}")
+                }
+            }
+        )
     }
 
     @ReactMethod
     fun startWaypointMission(promise: Promise) {
-        // No autonomous wayline yet — drone holds after takeoff. TODO(DJI-6).
-        promise.resolve(null)
+        val id = missionId
+        if (id == null) {
+            promise.reject(ERR, "startWaypointMission: uploadWaypoints must succeed first")
+            return
+        }
+        val path = kmzPath ?: run {
+            promise.reject(ERR, "startWaypointMission: kmzPath missing")
+            return
+        }
+
+        val waylineIds = try {
+            WaypointMissionManager.getInstance().getAvailableWaylineIDs(path)
+        } catch (e: Exception) {
+            // Visible fallback: a malformed/missing KMZ lands here and "wayline 0"
+            // may not exist — log it so the flight-line failure isn't cryptic.
+            Log.w(TAG, "getAvailableWaylineIDs threw, falling back to wayline 0: ${e.message}")
+            listOf(0)
+        }
+        Log.d(TAG, "startMission id=$id waylines=$waylineIds")
+
+        lastEmittedWaypointIndex = -1
+        WaypointMissionManager.getInstance().startMission(
+            id,
+            waylineIds,
+            object : CommonCallbacks.CompletionCallback {
+                override fun onSuccess() {
+                    Log.i(TAG, "startMission success")
+                    promise.resolve(null)
+                }
+
+                override fun onFailure(error: IDJIError) {
+                    Log.e(TAG, "startMission failed: ${error.description()}")
+                    promise.reject(ERR, "startMission: ${error.description()}")
+                }
+            }
+        )
     }
 
     @ReactMethod
     fun pauseMission(promise: Promise) {
-        promise.resolve(null)
+        WaypointMissionManager.getInstance().pauseMission(
+            object : CommonCallbacks.CompletionCallback {
+                override fun onSuccess() { promise.resolve(null) }
+                override fun onFailure(error: IDJIError) {
+                    promise.reject(ERR, "pauseMission: ${error.description()}")
+                }
+            }
+        )
     }
 
     @ReactMethod
     fun resumeMission(promise: Promise) {
-        promise.resolve(null)
+        WaypointMissionManager.getInstance().resumeMission(
+            object : CommonCallbacks.CompletionCallback {
+                override fun onSuccess() { promise.resolve(null) }
+                override fun onFailure(error: IDJIError) {
+                    promise.reject(ERR, "resumeMission: ${error.description()}")
+                }
+            }
+        )
     }
 
     @ReactMethod
     fun abortMission(promise: Promise) {
-        // Treat abort as RTH (matches the engine's abort→returnToHome path).
-        FlightControllerKey.KeyStartGoHome.create().action({
-            promise.resolve(null)
-        }, { err: IDJIError ->
-            promise.reject(ERR, "abort: ${err.description()}")
-        })
+        val id = missionId
+        if (id != null) {
+            // Stop the wayline mission, then RTH
+            WaypointMissionManager.getInstance().stopMission(
+                id,
+                object : CommonCallbacks.CompletionCallback {
+                    override fun onSuccess() {
+                        missionId = null
+                        kmzPath = null
+                        // Follow up with RTH for safety
+                        FlightControllerKey.KeyStartGoHome.create().action({
+                            promise.resolve(null)
+                        }, { err: IDJIError ->
+                            // RTH is best-effort after stop; resolve anyway
+                            Log.w(TAG, "abort RTH: ${err.description()}")
+                            promise.resolve(null)
+                        })
+                    }
+
+                    override fun onFailure(error: IDJIError) {
+                        Log.w(TAG, "stopMission in abort: ${error.description()} — falling back to RTH")
+                        FlightControllerKey.KeyStartGoHome.create().action({
+                            promise.resolve(null)
+                        }, { err: IDJIError ->
+                            promise.reject(ERR, "abort: ${err.description()}")
+                        })
+                    }
+                }
+            )
+        } else {
+            // No active mission — just RTH
+            FlightControllerKey.KeyStartGoHome.create().action({
+                promise.resolve(null)
+            }, { err: IDJIError ->
+                promise.reject(ERR, "abort: ${err.description()}")
+            })
+        }
     }
 
     // ── Camera ────────────────────────────────────────────────────────────────
