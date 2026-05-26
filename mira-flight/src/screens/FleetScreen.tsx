@@ -586,6 +586,14 @@ export default function FleetScreen() {
     <View style={s.root}>
       {/* Top strip */}
       <View style={s.topStrip}>
+        <TouchableOpacity
+          style={s.backBtn}
+          onPress={() => navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home')}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}>
+          <Text style={s.backBtnText}>←</Text>
+        </TouchableOpacity>
         <View style={s.topLeft}>
           <Text style={s.logoText}>MIRA</Text>
           <Text style={s.screenTitle}>FLEET</Text>
@@ -686,6 +694,18 @@ const s = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: spacing.lg,
     gap: spacing.lg,
+  },
+  backBtn: {
+    width: 44,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  backBtnText: {
+    fontSize: 22,
+    color: T.cyan,
+    fontFamily: fontFamily.ui,
+    lineHeight: 26,
   },
   topLeft: {
     flexDirection: 'row',
