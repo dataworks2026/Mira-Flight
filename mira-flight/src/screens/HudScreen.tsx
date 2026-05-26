@@ -214,6 +214,7 @@ export default function HudScreen() {
   const [activeModal, setActiveModal] = useState<'rth' | 'land' | 'abort' | 'estop' | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const graceRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const staleWatchRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const telemetryTimestampRef = useRef<number>(Date.now());
   const gpsDegradedSinceRef = useRef<number | null>(null);
   const isRthActiveRef = useRef(false);
@@ -252,11 +253,21 @@ export default function HudScreen() {
     resetHud();
     startMission();
     timerRef.current = setInterval(() => setElapsed(e => e + 1), 1000);
+    // Stale-telemetry watchdog: marks stale when packets stop for >2s.
+    // This is what drives the LOST_LINK transition in deriveHudState.
+    staleWatchRef.current = setInterval(() => {
+      const gap = Date.now() - telemetryTimestampRef.current;
+      const store = useDroneStore.getState();
+      if (gap > 2000 && store.telemetry_stale_since === null) {
+        store.markTelemetryStaleSince(telemetryTimestampRef.current + 2000);
+      }
+    }, 500);
     return () => {
       unsubTelemetryRef.current?.();
       engineRef.current?.abort();
       if (timerRef.current) clearInterval(timerRef.current);
       if (graceRef.current) clearInterval(graceRef.current);
+      if (staleWatchRef.current) clearInterval(staleWatchRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
