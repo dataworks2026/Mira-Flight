@@ -19,8 +19,10 @@ import FleetScreen from './screens/FleetScreen';
 import ConnectionSettingsScreen from './screens/ConnectionSettingsScreen';
 import {DebugLogOverlay} from './components/DebugLogOverlay';
 import {RootErrorBoundary, installGlobalErrorHandler} from './components/ErrorBoundary';
+import {installCrashLogging, miraLog} from './store/logStore';
 
 installGlobalErrorHandler();
+installCrashLogging();
 
 export type RootStackParamList = {
   Login: undefined;
@@ -74,6 +76,7 @@ export default function App(): React.JSX.Element {
       .catch((err: unknown) => {
         useDroneStore.getState().setConnected(false);
         const msg = err instanceof Error ? err.message : 'Connection failed';
+        miraLog('error', 'ADAPTER', `connect failed (${config.adapterType}): ${msg}`);
         setStatus('failed', msg);
       });
 
