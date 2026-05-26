@@ -28,6 +28,7 @@ import {
 } from '../components';
 import {ModalRTH, ModalLand, ModalAbort, ModalEStop} from '../components/HudModals';
 import {T, health, HEALTH_COLOR, spacing, radius, fontSize, fontFamily, hitTarget} from '../theme/tokens';
+import {HudRegionBoundary, safeFmt} from '../components/ErrorBoundary';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -415,10 +416,10 @@ export default function HudScreen() {
           {mapMarkers}
         </MapView>
         <View style={s.phoneTelemetry}>
-          <Text style={s.phoneTel}>ALT {alt.toFixed(1)}m</Text>
-          <Text style={s.phoneTel}>SPD {speed.toFixed(1)}m/s</Text>
+          <Text style={s.phoneTel}>ALT {safeFmt(alt, 1)}m</Text>
+          <Text style={s.phoneTel}>SPD {safeFmt(speed, 1)}m/s</Text>
           <Text style={[s.phoneTel, battHealth !== 'ok' && {color: HEALTH_COLOR[battHealth]}]}>
-            BAT {battery.toFixed(0)}%
+            BAT {safeFmt(battery, 0)}%
           </Text>
           <Text style={s.phoneTel}>GPS {satellites}sat</Text>
         </View>
@@ -460,7 +461,7 @@ export default function HudScreen() {
             tone={battHealth === 'ok' ? 'green' : battHealth === 'warn' ? 'amber' : 'red'}
             icon={<Text>⚡</Text>}
             label="BAT"
-            value={`${battery.toFixed(0)}%`}
+            value={`${safeFmt(battery, 0)}%`}
             size="sm"
           />
           <StatusPill
@@ -481,7 +482,7 @@ export default function HudScreen() {
             tone={signalHealth === 'ok' ? 'cyan' : signalHealth === 'warn' ? 'amber' : 'red'}
             icon={<Text>◈</Text>}
             label="LINK"
-            value={`${signal.toFixed(0)}dBm`}
+            value={`${safeFmt(signal, 0)}dBm`}
             size="sm"
           />
         </View>
@@ -500,10 +501,11 @@ export default function HudScreen() {
 
         {/* ── LEFT TELEM RAIL ──────────────────────────────────────── */}
         <View style={s.leftRail}>
+          <HudRegionBoundary tag="TELEM">
           <TelemTape
             icon={<Text style={{color: HEALTH_COLOR[altHealth]}}>↕</Text>}
             label="ALT AGL"
-            value={alt.toFixed(1)}
+            value={safeFmt(alt, 1)}
             unit="m"
             health={altHealth}
             big
@@ -511,27 +513,27 @@ export default function HudScreen() {
           <TelemTape
             icon={<Text style={{color: T.t2}}>→</Text>}
             label="GND SPD"
-            value={speed.toFixed(1)}
+            value={safeFmt(speed, 1)}
             unit="m/s"
             big
           />
           <TelemTape
             icon={<Text style={{color: HEALTH_COLOR[vspeedHealth]}}>↕</Text>}
             label="V SPEED"
-            value={vspeed >= 0 ? `+${vspeed.toFixed(1)}` : vspeed.toFixed(1)}
+            value={!isFinite(vspeed) ? '—' : (vspeed >= 0 ? `+${vspeed.toFixed(1)}` : vspeed.toFixed(1))}
             unit="m/s"
             health={vspeedHealth}
           />
           <TelemTape
             icon={<Text style={{color: T.t2}}>⊙</Text>}
             label="HEADING"
-            value={heading.toFixed(0)}
+            value={safeFmt(heading, 0)}
             unit="°"
           />
           <TelemTape
             icon={<Text style={{color: T.t2}}>◇</Text>}
             label="GIMBAL"
-            value={gimbal_pitch.toFixed(0)}
+            value={safeFmt(gimbal_pitch, 0)}
             unit="°"
             subLabel="PITCH"
           />
@@ -539,10 +541,10 @@ export default function HudScreen() {
           {/* Battery kill-clock block */}
           <View style={s.battBlock}>
             <View style={s.battHeader}>
-              <Text style={s.battPct}>{battery.toFixed(0)}</Text>
+              <Text style={s.battPct}>{safeFmt(battery, 0)}</Text>
               <Text style={s.battPctUnit}>%</Text>
             </View>
-            <Text style={s.battVolt}>{battery_voltage.toFixed(1)}V · {battery_temp_c.toFixed(0)}°C</Text>
+            <Text style={s.battVolt}>{safeFmt(battery_voltage, 1)}V · {safeFmt(battery_temp_c, 0)}°C</Text>
             <View style={s.battTrack}>
               <View style={[s.battFill, {
                 width: `${battery}%` as any,
@@ -563,12 +565,14 @@ export default function HudScreen() {
           <View style={s.railFooter}>
             <KV label="GPS" value={`${satellites} sat`} mono inline />
             <KV label="RTK" value={rtk_status} mono inline tone={rtkHealth === 'ok' ? 'green' : rtkHealth === 'warn' ? 'amber' : 'red'} noDivider />
-            <KV label="RC LINK" value={`${signal.toFixed(0)} dBm`} mono inline tone={signalHealth === 'ok' ? 'cyan' : signalHealth === 'warn' ? 'amber' : 'red'} noDivider />
+            <KV label="RC LINK" value={`${safeFmt(signal, 0)} dBm`} mono inline tone={signalHealth === 'ok' ? 'cyan' : signalHealth === 'warn' ? 'amber' : 'red'} noDivider />
           </View>
+          </HudRegionBoundary>
         </View>
 
         {/* ── CENTER AREA ──────────────────────────────────────────── */}
         <View style={s.center}>
+          <HudRegionBoundary tag="MAP">
           {/* State banner */}
           {bannerConfig && (
             <StateBanner
@@ -616,18 +620,20 @@ export default function HudScreen() {
               {viewport === 'video_primary' ? '◉ MAP' : '▶ VIDEO'}
             </Text>
           </TouchableOpacity>
+          </HudRegionBoundary>
         </View>
 
         {/* ── RIGHT MISSION PANEL ───────────────────────────────────── */}
         <View style={s.rightPanel}>
 
+          <HudRegionBoundary tag="MISSION_INFO">
           {/* Mission progress card */}
           <View style={s.progressCard}>
             <View style={s.progressCardHeader}>
               <Text style={s.progressFrac}>
                 {waypointCurrent} <Text style={s.progressFracOf}>/ {waypointTotal}</Text>
               </Text>
-              <Text style={s.progressPct}>{progressPct.toFixed(0)}%</Text>
+              <Text style={s.progressPct}>{safeFmt(progressPct, 0)}%</Text>
             </View>
             <Text style={s.progressSub}>waypoints · {photosCount} photos</Text>
             <View style={s.progressTrack}>
@@ -674,6 +680,7 @@ export default function HudScreen() {
               );
             })}
           </ScrollView>
+          </HudRegionBoundary>
 
           {/* Pause / Skip row */}
           <View style={s.pauseRow}>

@@ -18,6 +18,9 @@ import MissionReviewScreen from './screens/MissionReviewScreen';
 import FleetScreen from './screens/FleetScreen';
 import ConnectionSettingsScreen from './screens/ConnectionSettingsScreen';
 import {DebugLogOverlay} from './components/DebugLogOverlay';
+import {RootErrorBoundary, installGlobalErrorHandler} from './components/ErrorBoundary';
+
+installGlobalErrorHandler();
 
 export type RootStackParamList = {
   Login: undefined;
@@ -89,6 +92,7 @@ export default function App(): React.JSX.Element {
   }
 
   return (
+    <RootErrorBoundary>
     <View style={appSt.root}>
       <DroneContext.Provider value={adapter}>
         <NavigationContainer>
@@ -114,6 +118,7 @@ export default function App(): React.JSX.Element {
       </DroneContext.Provider>
       <DebugLogOverlay />
     </View>
+    </RootErrorBoundary>
   );
 }
 
