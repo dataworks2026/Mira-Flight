@@ -9,6 +9,7 @@ import {
   Share,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -403,6 +404,8 @@ export default function HomeScreen() {
   const [filter, setFilter] = useState<FilterKey>('all');
   const [initialLoading, setInitialLoading] = useState(true);
   const [overflowMission, setOverflowMission] = useState<Mission | null>(null);
+  const [renameTarget, setRenameTarget] = useState<Mission | null>(null);
+  const [renameText, setRenameText] = useState('');
 
   const setMission = useMissionStore(s => s.setMission);
   const setWaypoints = useMissionStore(s => s.setWaypoints);
@@ -485,6 +488,26 @@ export default function HomeScreen() {
           } catch {
             // user cancelled share sheet
           }
+          break;
+        case 'rename':
+          setRenameText(mission.name);
+          setRenameTarget(mission);
+          break;
+        case 'archive':
+          Alert.alert('Archive', `Archive "${mission.name}"?`, [
+            {text: 'Cancel', style: 'cancel'},
+            {
+              text: 'Archive',
+              onPress: async () => {
+                try {
+                  await miraClient.updateMission(mission.id, {status: 'archived'});
+                  await fetchMissions();
+                } catch {
+                  Alert.alert('Error', 'Could not archive mission');
+                }
+              },
+            },
+          ]);
           break;
         default:
           Alert.alert(
@@ -660,6 +683,50 @@ export default function HomeScreen() {
                 </Text>
               </TouchableOpacity>
             ))}
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Rename modal ───────────────────────────────────────────────────── */}
+      <Modal
+        visible={renameTarget !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setRenameTarget(null)}>
+        <View style={rnmSt.root}>
+          <View style={rnmSt.card}>
+            <Text style={rnmSt.title}>Rename Mission</Text>
+            <TextInput
+              style={rnmSt.input}
+              value={renameText}
+              onChangeText={setRenameText}
+              autoFocus
+              selectTextOnFocus
+              placeholderTextColor={T.t3}
+            />
+            <View style={rnmSt.row}>
+              <TouchableOpacity
+                style={rnmSt.cancel}
+                onPress={() => setRenameTarget(null)}>
+                <Text style={rnmSt.cancelTxt}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={rnmSt.save}
+                onPress={async () => {
+                  const target = renameTarget;
+                  const newName = renameText.trim();
+                  if (!target || !newName) {return;}
+                  setRenameTarget(null);
+                  try {
+                    await miraClient.updateMission(target.id, {name: newName});
+                    await fetchMissions();
+                  } catch {
+                    Alert.alert('Error', 'Could not rename mission');
+                  }
+                }}>
+                <Text style={rnmSt.saveTxt}>Save</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -889,4 +956,61 @@ const omSt = StyleSheet.create({
     fontWeight: '500',
   },
   itemTxtDanger: {color: T.red},
+});
+
+// ── Rename modal styles ───────────────────────────────────────────────────────
+
+const rnmSt = StyleSheet.create({
+  root: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: spacing.xxl,
+  },
+  card: {
+    width: '100%',
+    backgroundColor: T.panel,
+    borderRadius: radius.panel,
+    padding: spacing.xl,
+    borderWidth: 1,
+    borderColor: T.hairline,
+  },
+  title: {
+    fontSize: fontSize.body,
+    fontWeight: '700',
+    color: T.t1,
+    marginBottom: spacing.lg,
+  },
+  input: {
+    backgroundColor: T.card,
+    borderRadius: radius.btn,
+    borderWidth: 1,
+    borderColor: T.hairline,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    color: T.t1,
+    fontSize: fontSize.body,
+    marginBottom: spacing.xl,
+  },
+  row: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    justifyContent: 'flex-end',
+  },
+  cancel: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.btn,
+    borderWidth: 1,
+    borderColor: T.hairline,
+  },
+  cancelTxt: {fontSize: fontSize.body, color: T.t2},
+  save: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.btn,
+    backgroundColor: T.cyan,
+  },
+  saveTxt: {fontSize: fontSize.body, fontWeight: '700', color: T.bg},
 });

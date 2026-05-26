@@ -178,6 +178,11 @@ export const miraClient = {
     return data;
   },
 
+  async updateMission(missionId: string, patch: Partial<Mission>): Promise<Mission> {
+    const {data} = await api.patch<Mission>(`/missions/${missionId}`, patch);
+    return data;
+  },
+
   async uploadFlightLog(missionId: string, log: FlightLog): Promise<void> {
     await api.post(`/missions/${missionId}/flight_log`, log);
   },
