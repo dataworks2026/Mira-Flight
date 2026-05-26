@@ -1,6 +1,7 @@
 package com.miraflight
 
 import android.app.Application
+import android.content.Context
 import com.facebook.react.PackageList
 import com.facebook.react.ReactApplication
 import com.facebook.react.ReactHost
@@ -8,6 +9,12 @@ import com.facebook.react.ReactNativeApplicationEntryPoint.loadReactNative
 import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
 
 class MainApplication : Application(), ReactApplication {
+
+  override fun attachBaseContext(base: Context?) {
+    super.attachBaseContext(base)
+    // DJI MSDK v5 anti-tamper/native loader — must run before any DJI SDK use.
+    com.cySdkyc.clx.Helper.install(this)
+  }
 
   override val reactHost: ReactHost by lazy {
     getDefaultReactHost(
