@@ -351,7 +351,7 @@ export default function HudScreen() {
   }, [waypoints, setHudState]);
 
   // ── Derived display values ─────────────────────────────────────────
-  const droneCoord = lat !== 0 ? {latitude: lat, longitude: lon} : null;
+  const droneCoord = (isFinite(lat) && isFinite(lon) && lat !== 0) ? {latitude: lat, longitude: lon} : null;
   const mapRegion = droneCoord
     ? {...droneCoord, latitudeDelta: 0.003, longitudeDelta: 0.003}
     : {latitude: 39.9612, longitude: -82.9988, latitudeDelta: 0.01, longitudeDelta: 0.01};
@@ -547,7 +547,7 @@ export default function HudScreen() {
             <Text style={s.battVolt}>{safeFmt(battery_voltage, 1)}V · {safeFmt(battery_temp_c, 0)}°C</Text>
             <View style={s.battTrack}>
               <View style={[s.battFill, {
-                width: `${battery}%` as any,
+                width: `${Math.max(0, Math.min(100, battery))}%` as any,
                 backgroundColor: HEALTH_COLOR[battHealth],
               }]} />
               {/* RTH tick at 25% */}
