@@ -13,6 +13,7 @@ import {
 import {useNavigation} from '@react-navigation/native';
 import {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import {useAuthStore} from '../store/authStore';
+import {miraLog} from '../store/logStore';
 import {RootStackParamList} from '../App';
 import {
   T,
@@ -55,7 +56,9 @@ export default function LoginScreen() {
     setError('');
     setLoading(true);
     try {
-      await login(email.trim(), password);
+      const pw = password.trim();
+      miraLog('debug', 'LOGIN', JSON.stringify({email: email.trim(), pwLen: pw.length, pwFirst: pw[0] ?? '(empty)'}));
+      await login(email.trim(), pw);
       navigation.reset({index: 0, routes: [{name: 'Home'}]});
     } catch (err: any) {
       setError(err?.message || 'Invalid credentials');
@@ -118,6 +121,10 @@ export default function LoginScreen() {
                 value={password}
                 onChangeText={v => {setPassword(v); setError('');}}
                 secureTextEntry={!showPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
+                spellCheck={false}
+                textContentType="password"
                 returnKeyType="done"
                 onSubmitEditing={handleLogin}
                 onFocus={() => setPassFocused(true)}
