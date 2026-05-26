@@ -15,8 +15,12 @@ import com.facebook.react.modules.core.DeviceEventManagerModule
 import dji.sdk.keyvalue.key.BatteryKey
 import dji.sdk.keyvalue.key.CameraKey
 import dji.sdk.keyvalue.key.FlightControllerKey
+import dji.sdk.keyvalue.key.KeyTools
+import dji.sdk.keyvalue.value.camera.CameraVideoStreamSourceType
+import dji.sdk.keyvalue.value.common.ComponentIndexType
 import dji.sdk.keyvalue.value.common.LocationCoordinate3D
 import dji.sdk.keyvalue.value.common.Velocity3D
+import dji.v5.manager.KeyManager
 import dji.v5.common.callback.CommonCallbacks
 import dji.v5.common.error.IDJIError
 import dji.v5.common.register.DJISDKInitEvent
@@ -111,6 +115,7 @@ class DJIBridgeModule(private val reactContext: ReactApplicationContext) :
                 override fun onProductConnect(productId: Int) {
                     Log.i(TAG, "product connected: $productId")
                     startTelemetry()
+                    enableLaserRangefinder()
                 }
 
                 override fun onProductDisconnect(productId: Int) {
@@ -432,38 +437,121 @@ class DJIBridgeModule(private val reactContext: ReactApplicationContext) :
 
     // ── Camera ────────────────────────────────────────────────────────────────
 
+    // H20T payload sits on the main gimbal. Camera keys are indexed by component.
+    private val cameraIndex = ComponentIndexType.LEFT_OR_MAIN
+
+    /** Map app lens names to H20T stream sources. */
+    private fun lensSource(lens: String): CameraVideoStreamSourceType = when (lens.lowercase()) {
+        "zoom" -> CameraVideoStreamSourceType.ZOOM_CAMERA
+        "thermal", "ir", "infrared" -> CameraVideoStreamSourceType.INFRARED_CAMERA
+        else -> CameraVideoStreamSourceType.WIDE_CAMERA
+    }
+
+    private fun photoResult(lens: String): WritableMap {
+        // Photo is written to the aircraft SD card. File retrieval via MediaManager
+        // (for upload to the twin) is the remaining piece — TODO(DJI-10 media pull).
+        val res = Arguments.createMap()
+        res.putString("localPath", "")
+        res.putString("lens", lens)
+        res.putString("timestamp", System.currentTimeMillis().toString())
+        return res
+    }
+
     @ReactMethod
     fun capturePhoto(lens: String, promise: Promise) {
-        CameraKey.KeyStartShootPhoto.create().action({
-            // Photo lands on the aircraft SD card; media retrieval is a follow-up.
-            val res = Arguments.createMap()
-            res.putString("localPath", "")
-            res.putString("lens", lens)
-            res.putString("timestamp", System.currentTimeMillis().toString())
-            promise.resolve(res)
-        }, { err: IDJIError ->
-            promise.reject(ERR, "shootPhoto: ${err.description()}")
-        })
+        // Select the requested H20T lens, then shoot.
+        KeyManager.getInstance().setValue(
+            KeyTools.createKey(CameraKey.KeyCameraVideoStreamSource, cameraIndex),
+            lensSource(lens),
+            object : CommonCallbacks.CompletionCallback {
+                override fun onSuccess() {
+                    CameraKey.KeyStartShootPhoto.create().action({
+                        promise.resolve(photoResult(lens))
+                    }, { err: IDJIError -> promise.reject(ERR, "shootPhoto: ${err.description()}") })
+                }
+                override fun onFailure(error: IDJIError) {
+                    // Lens switch failed — still attempt the shot on the current lens.
+                    Log.w(TAG, "switchLens($lens) failed: ${error.description()}")
+                    CameraKey.KeyStartShootPhoto.create().action({
+                        promise.resolve(photoResult(lens))
+                    }, { err: IDJIError -> promise.reject(ERR, "shootPhoto: ${err.description()}") })
+                }
+            },
+        )
     }
 
     @ReactMethod
     fun captureAllLenses(promise: Promise) {
-        promise.resolve(Arguments.createArray())
+        // Shoot wide → zoom → thermal in sequence (feeds the twin RGB + IR).
+        val lenses = listOf("wide", "zoom", "thermal")
+        val out = Arguments.createArray()
+        fun shootAt(i: Int) {
+            if (i >= lenses.size) { promise.resolve(out); return }
+            val lens = lenses[i]
+            KeyManager.getInstance().setValue(
+                KeyTools.createKey(CameraKey.KeyCameraVideoStreamSource, cameraIndex),
+                lensSource(lens),
+                object : CommonCallbacks.CompletionCallback {
+                    override fun onSuccess() {
+                        CameraKey.KeyStartShootPhoto.create().action(
+                            { out.pushMap(photoResult(lens)); shootAt(i + 1) },
+                            { e: IDJIError -> Log.w(TAG, "shoot $lens failed: ${e.description()}"); shootAt(i + 1) },
+                        )
+                    }
+                    override fun onFailure(error: IDJIError) {
+                        Log.w(TAG, "lens $lens switch failed: ${error.description()}"); shootAt(i + 1)
+                    }
+                },
+            )
+        }
+        shootAt(0)
     }
 
     @ReactMethod
     fun setGimbal(pitch: Double, yaw: Double, promise: Promise) {
+        // Gimbal control via GimbalKey is a follow-up; capture uses wayline gimbal-pitch.
         promise.resolve(null)
     }
 
     @ReactMethod
     fun setZoom(level: Double, promise: Promise) {
-        promise.resolve(null)
+        KeyManager.getInstance().setValue(
+            KeyTools.createKey(CameraKey.KeyCameraZoomRatios, cameraIndex),
+            level,
+            object : CommonCallbacks.CompletionCallback {
+                override fun onSuccess() { promise.resolve(null) }
+                override fun onFailure(error: IDJIError) { promise.reject(ERR, "setZoom: ${error.description()}") }
+            },
+        )
     }
 
     @ReactMethod
     fun switchLens(lens: String, promise: Promise) {
-        promise.resolve(null)
+        KeyManager.getInstance().setValue(
+            KeyTools.createKey(CameraKey.KeyCameraVideoStreamSource, cameraIndex),
+            lensSource(lens),
+            object : CommonCallbacks.CompletionCallback {
+                override fun onSuccess() { promise.resolve(null) }
+                override fun onFailure(error: IDJIError) { promise.reject(ERR, "switchLens: ${error.description()}") }
+            },
+        )
+    }
+
+    /** Enable the H20T laser rangefinder so target distance is available for capture
+     *  metadata + the twin's scale. Called after registration. */
+    private fun enableLaserRangefinder() {
+        try {
+            KeyManager.getInstance().setValue(
+                KeyTools.createKey(CameraKey.KeyLaserMeasureEnabled, cameraIndex),
+                true,
+                object : CommonCallbacks.CompletionCallback {
+                    override fun onSuccess() { Log.i(TAG, "LRF enabled") }
+                    override fun onFailure(error: IDJIError) { Log.w(TAG, "LRF enable failed: ${error.description()}") }
+                },
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "LRF enable threw: ${e.message}")
+        }
     }
 
     @ReactMethod
