@@ -570,9 +570,9 @@ export default function PreflightScreen(): React.ReactElement {
           {/* Center: checklist */}
           <ScrollView style={styles.checklistScroll} contentContainerStyle={styles.checklistContent}>
             <Text style={styles.checklistSummary}>
-              {checks.filter(c => c.status === 'ok').length} of {checks.length} checks passed
-              {warningCount > 0 ? ` · ${warningCount} warnings` : ''}
-              {blockingCount > 0 ? ` · ${blockingCount} blocking` : ''}
+              {checks.filter(c => c.status === 'ok').length} / {checks.length} passed
+              {warningCount > 0 && <Text style={{color: T.amber}}>{' · '}{warningCount} warn</Text>}
+              {blockingCount > 0 && <Text style={{color: T.red}}>{' · '}{blockingCount} block</Text>}
             </Text>
             <View style={styles.sectionGrid}>
               {groupedChecks.map(({group, items}) => (
@@ -722,12 +722,12 @@ const styles = StyleSheet.create({
 
   // Checklist center
   checklistScroll: {flex: 1},
-  checklistContent: {padding: spacing.md},
+  checklistContent: {padding: spacing.sm},
   checklistSummary: {
-    color: T.t2, fontSize: fontSize.caption, marginBottom: spacing.md,
-    textAlign: 'center',
+    color: T.t1, fontSize: fontSize.cardTitle, fontWeight: '700',
+    marginBottom: spacing.sm, textAlign: 'center', letterSpacing: 0.2,
   },
-  sectionGrid: {gap: spacing.md},
+  sectionGrid: {gap: spacing.sm},
 
   sectionCard: {
     backgroundColor: T.panel,
@@ -741,7 +741,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.xs,
     borderBottomWidth: hairline,
     borderBottomColor: T.hairline,
   },
@@ -751,8 +751,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    minHeight: hitTarget.btn,
+    paddingVertical: spacing.xs,
+    minHeight: 30,
   },
   checkPill: {marginTop: 2, marginRight: spacing.sm, flexShrink: 0},
   checkText: {flex: 1},

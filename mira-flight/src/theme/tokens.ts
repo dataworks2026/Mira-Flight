@@ -75,17 +75,17 @@ export const HEALTH_COLOR: Record<HealthLevel, string> = {
   crit: T.red,
 };
 
-// ── Spacing (8-px grid) ──────────────────────────────────────────────────────
-
+// ── Spacing — tightened ~30% to fit the DJI RC Plus screen (480×768 dp landscape,
+// vs Tab S10+ 720×1152 dp) without forcing scroll on mission-planning / preflight.
 export const spacing = {
-  xs:  4,
-  sm:  8,
-  md:  12,
-  lg:  16,
-  xl:  20,
-  xxl: 24,
-  '3xl': 28,
-  '4xl': 32,
+  xs:  3,
+  sm:  6,
+  md:  9,
+  lg:  12,
+  xl:  15,
+  xxl: 18,
+  '3xl': 21,
+  '4xl': 24,
 } as const;
 
 // ── Radii ────────────────────────────────────────────────────────────────────
@@ -101,14 +101,15 @@ export const radius = {
 
 // ── Typography sizes (px / dp) ───────────────────────────────────────────────
 
+// Font sizes — tightened ~25% for RC Plus (still large enough to read at arm's length).
 export const fontSize = {
-  heroNumeric: 48,   // HUD speed / alt
-  sectionHero: 52,   // "98%" battery
-  pageTitle:   30,
-  cardTitle:   18,
-  body:        14,
-  caption:     12,
-  monoMicro:   10,
+  heroNumeric: 36,   // HUD speed / alt
+  sectionHero: 40,   // "98%" battery
+  pageTitle:   22,
+  cardTitle:   15,
+  body:        13,
+  caption:     11,
+  monoMicro:   9,
 } as const;
 
 // ── Letter-spacing for labels ────────────────────────────────────────────────
@@ -131,8 +132,10 @@ export const hairline = 1 as const;
 
 // ── Hit targets ──────────────────────────────────────────────────────────────
 
+// Hit targets — still finger-friendly on RC Plus (Material min is 48dp; we drop to
+// 40 for primary buttons since the RC Plus screen is small and most taps land cleanly).
 export const hitTarget = {
-  btn:      44,
-  iconBtn:  40,
-  slider:   16,
+  btn:      40,
+  iconBtn:  36,
+  slider:   14,
 } as const;
