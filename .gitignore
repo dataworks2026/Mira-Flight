@@ -98,3 +98,9 @@ dist/
 build/
 coverage/
 *.log
+
+# Internal one-shot admin scripts (may contain creds)
+_aws_resize.py
+_dbdelete.py
+_dbfk.py
+_dbpreview.py

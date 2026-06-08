@@ -2,11 +2,16 @@ import {create} from 'zustand';
 import RNFS from 'react-native-fs';
 
 const MAX_ENTRIES = 2000;
-// Ring-buffer snapshot written on demand (the in-app overlay SAVE button).
-const LOG_PATH = `${RNFS.DocumentDirectoryPath}/mira_debug.log`;
+// External app-specific dir → maps to /sdcard/Android/data/com.miraflight/files/
+// which is reachable via `adb shell cat` on BOTH debug and release builds
+// (run-as is blocked on non-debuggable APKs, so DocumentDirectoryPath is unusable
+// on the field APK — this is the lesson from the on-aircraft crash). Fallback to
+// DocumentDirectoryPath if external isn't available (older Android).
+const LOG_BASE = (RNFS.ExternalDirectoryPath || RNFS.DocumentDirectoryPath);
+const LOG_PATH = `${LOG_BASE}/mira_debug.log`;
 // Append-only log that survives crashes/kills and accumulates across sessions.
-// Pull on reconnect: adb shell run-as com.miraflight cat files/mira_session.log
-const SESSION_LOG_PATH = `${RNFS.DocumentDirectoryPath}/mira_session.log`;
+// Pull on reconnect: adb shell cat /sdcard/Android/data/com.miraflight/files/mira_session.log
+const SESSION_LOG_PATH = `${LOG_BASE}/mira_session.log`;
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 

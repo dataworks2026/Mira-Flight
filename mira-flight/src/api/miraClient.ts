@@ -11,7 +11,7 @@ import {
   FlightLog,
 } from '../types/shared';
 
-const BASE_URL = 'http://3.144.48.124/api/v1';
+const BASE_URL = 'http://3.133.43.231/api/v1';
 
 let authToken: string | null = null;
 

@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Mira Twin Viewer</title>
+<style>
+  html, body { margin:0; padding:0; height:100%; overflow:hidden;
+              background:#070A10; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:#F1F5F9; }
+
+  #ui-top { position:fixed; top:10px; left:10px; right:10px; z-index:10; pointer-events:none;
+           display:flex; justify-content:space-between; align-items:flex-start; gap:10px; }
+  #title-pane { background:rgba(7,10,16,0.78); padding:9px 14px; border-radius:8px;
+               border:1px solid #1F2A38; backdrop-filter: blur(4px); }
+  #title { font-weight:700; font-size:15px; letter-spacing:0.5px; color:#00D4FF; }
+  #sub   { font-size:11px; color:#94A3B8; margin-top:2px; }
+  #status { background:rgba(7,10,16,0.78); padding:9px 14px; border-radius:8px;
+           border:1px solid #1F2A38; font-size:12px; max-width:340px; }
+  #bar { height:4px; background:#1E2530; margin-top:6px; border-radius:2px; overflow:hidden; }
+  #bar > div { height:100%; background:#00D4FF; width:0%; transition: width 0.3s; }
+
+  #measure-pane { position:fixed; top:90px; left:10px; z-index:10;
+                background:rgba(7,10,16,0.85); border:1px solid #1F2A38; border-radius:8px;
+                padding:12px 14px; font-size:12px; min-width:220px; pointer-events:auto;
+                backdrop-filter: blur(4px); }
+  #measure-pane h3 { margin:0 0 8px; font-size:10px; text-transform:uppercase; letter-spacing:0.8px;
+                    color:#5b6878; font-weight:600; }
+  .measure-row { display:flex; justify-content:space-between; margin:4px 0;
+                font-family:"JetBrains Mono",Consolas,monospace; }
+  .measure-row .lbl { color:#94A3B8; }
+  .measure-row .val { color:#F1F5F9; font-weight:600; }
+  .measure-row .val.x { color:#FB7185; }
+  .measure-row .val.y { color:#86EFAC; }
+  .measure-row .val.z { color:#7DD3FC; }
+
+  #controls { position:fixed; bottom:10px; left:10px; z-index:10;
+             background:rgba(7,10,16,0.85); border:1px solid #1F2A38; border-radius:8px;
+             padding:10px 14px; font-size:11px; pointer-events:auto;
+             display:flex; flex-direction:column; gap:9px; min-width:300px;
+             backdrop-filter: blur(4px); }
+  #controls .group { display:flex; gap:6px; flex-wrap:wrap; }
+  #controls button { background:#0F151E; color:#F1F5F9; border:1px solid #2a3849;
+                    padding:6px 10px; font-size:11px; border-radius:6px; cursor:pointer;
+                    font-family:inherit; letter-spacing:0.3px; }
+  #controls button:hover { background:#1a2330; border-color:#3a4a5e; }
+  #controls button.on { background:#0a3a4d; border-color:#00D4FF; color:#00D4FF; }
+  #controls .lbl { color:#94A3B8; font-size:10px; text-transform:uppercase; letter-spacing:0.6px; margin-bottom:2px; }
+  #controls input[type=range] { width:100%; accent-color:#00D4FF; }
+  #controls .row { display:flex; align-items:center; gap:8px; }
+  #controls .row .min, #controls .row .max { font-family:monospace; font-size:10px; color:#5b6878; min-width:40px; }
+
+  #stats { position:fixed; bottom:10px; right:10px; color:#94A3B8; font-size:11px;
+          background:rgba(7,10,16,0.85); padding:6px 10px; border-radius:6px; z-index:10;
+          font-family:"JetBrains Mono",Consolas,monospace; border:1px solid #1F2A38;
+          backdrop-filter: blur(4px); }
+  .stat { display:flex; gap:10px; justify-content:space-between; }
+  .stat .v { color:#F1F5F9; }
+  #fps { color:#34D399; }
+
+  canvas { display:block; }
+
+  .axis-x { color:#FB7185 }
+  .axis-y { color:#86EFAC }
+  .axis-z { color:#7DD3FC }
+</style>
+</head>
+<body>
+
+<div id="ui-top">
+  <div id="title-pane">
+    <div id="title">MIRA TWIN — <span id="mname">…</span></div>
+    <div id="sub">photogrammetric reconstruction · drag to orbit · scroll to zoom · right-drag to pan</div>
+  </div>
+  <div id="status">
+    <div id="msg">Loading…</div>
+    <div id="bar"><div></div></div>
+  </div>
+</div>
+
+<div id="measure-pane">
+  <h3>Asset dimensions</h3>
+  <div class="measure-row"><span class="lbl">Length (<span class="axis-x">X</span>)</span><span class="val x" id="dim-x">…</span></div>
+  <div class="measure-row"><span class="lbl">Width  (<span class="axis-z">Z</span>)</span><span class="val z" id="dim-z">…</span></div>
+  <div class="measure-row"><span class="lbl">Height (<span class="axis-y">Y</span>)</span><span class="val y" id="dim-y">…</span></div>
+  <h3 style="margin-top:10px;">Mesh</h3>
+  <div class="measure-row"><span class="lbl">Vertices</span><span class="val" id="m-verts">…</span></div>
+  <div class="measure-row"><span class="lbl">Faces</span><span class="val" id="m-faces">…</span></div>
+  <div class="measure-row"><span class="lbl">Materials</span><span class="val" id="m-mats">…</span></div>
+</div>
+
+<div id="controls">
+  <div class="group">
+    <button id="btn-fit-pier" title="Auto-fit to dense central region (ignore skyline noise)">Fit to pier</button>
+    <button id="btn-fit-all"  title="Fit camera to entire model bounds">Fit all</button>
+  </div>
+  <div class="group">
+    <button id="btn-oblique"  title="Oblique 30° view (default)">Oblique</button>
+    <button id="btn-side"     title="Side view (height profile)">Side</button>
+    <button id="btn-top"      title="Top-down (nadir)">Top</button>
+  </div>
+  <div class="group">
+    <button id="btn-wire"     title="Toggle wireframe">Wireframe</button>
+    <button id="btn-axes"     title="Toggle world axes">Axes</button>
+    <button id="btn-grid"     title="Toggle ground grid">Grid</button>
+    <button id="btn-lights"   title="Cycle lighting preset">Light</button>
+  </div>
+  <div>
+    <div class="lbl">Clip noise above ground</div>
+    <div class="row">
+      <span class="min" id="clip-min">–</span>
+      <input type="range" id="clip-top" min="0" max="100" value="100">
+      <span class="max" id="clip-max">–</span>
+    </div>
+  </div>
+</div>
+
+<div id="stats">
+  <div class="stat"><span>FPS</span><span class="v" id="fps">…</span></div>
+  <div class="stat"><span>Draw</span><span class="v" id="calls">…</span></div>
+  <div class="stat"><span>Tris drawn</span><span class="v" id="tris">…</span></div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';
+
+const params = new URLSearchParams(location.search);
+const mid  = params.get('mid')  || '2abe1a45-0fc7-4e92-9d87-5c7cc7b0c1b8';
+const name = params.get('name') || 'Yankee Pier';
+document.getElementById('mname').textContent = name;
+
+const msgEl = document.getElementById('msg');
+const bar = document.querySelector('#bar > div');
+const setStatus = s => { msgEl.textContent = s; };
+const setProgress = p => { bar.style.width = (p*100).toFixed(0) + '%'; };
+
+// ── scene ─────────────────────────────────────────────────────────────────
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x070A10);
+scene.fog = new THREE.Fog(0x070A10, 300, 1500);
+
+const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.1, 5000);
+camera.position.set(150, 150, 150);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+renderer.localClippingEnabled = true;
+document.body.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.07;
+controls.maxPolarAngle = Math.PI;     // allow underside view
+
+// ── lighting (multi-light setup for relief) ───────────────────────────────
+const lights = {
+  ambient: new THREE.AmbientLight(0xffffff, 0.55),
+  hemi:    new THREE.HemisphereLight(0xb0d0ff, 0x223040, 0.40),
+  key:     new THREE.DirectionalLight(0xffffff, 1.25),
+  fill:    new THREE.DirectionalLight(0x90a0b8, 0.55),
+  rim:     new THREE.DirectionalLight(0xc0e0ff, 0.55),
+};
+lights.key.position.set(150, 280, 100);
+lights.fill.position.set(-120, 80, -150);
+lights.rim.position.set(0, -80, 250);
+Object.values(lights).forEach(l => scene.add(l));
+
+// ── helpers ───────────────────────────────────────────────────────────────
+const axesHelper = new THREE.AxesHelper(80);
+scene.add(axesHelper);
+let grid = null;
+function makeGrid(size, y) {
+  if (grid) { scene.remove(grid); grid.geometry.dispose(); }
+  grid = new THREE.GridHelper(size, 40, 0x2a3a52, 0x142030);
+  grid.position.y = y;
+  scene.add(grid);
+}
+
+// ── load OBJ + MTL ────────────────────────────────────────────────────────
+let modelGroup = null;
+let worldBBox = null;
+let denseCenter = null;
+let denseSize = null;
+let modelClipPlane = null;
+let totalVerts = 0, totalTris = 0;
+let materialsList = [];
+
+const texBase = `/twin-data/${mid}/odm_texturing/`;
+
+setStatus('Loading materials…');
+const mtlLoader = new MTLLoader();
+mtlLoader.setPath(texBase);
+mtlLoader.load('odm_textured_model_geo.mtl',
+  mats => {
+    mats.preload();
+    materialsList = Object.values(mats.materials);
+    document.getElementById('m-mats').textContent = materialsList.length.toLocaleString();
+
+    // Wire clip plane into every material so the slider can hide noise above ground
+    modelClipPlane = new THREE.Plane(new THREE.Vector3(0,-1,0), 1e6);
+    materialsList.forEach(m => {
+      m.clippingPlanes = [modelClipPlane];
+      m.clipShadows = false;
+    });
+
+    setStatus('Loading geometry — this is a high-detail twin, may take a minute…');
+    const objLoader = new OBJLoader();
+    objLoader.setMaterials(mats);
+    objLoader.setPath(texBase);
+    objLoader.load('odm_textured_model_geo.obj',
+      group => onModelLoaded(group),
+      ev => {
+        if (ev.lengthComputable) {
+          setProgress(ev.loaded / ev.total);
+          const mb = (ev.loaded / 1e6).toFixed(1);
+          const tot = (ev.total / 1e6).toFixed(1);
+          setStatus(`Loading geometry  ${mb} / ${tot} MB`);
+        }
+      },
+      err => { setStatus('OBJ load failed: ' + err.message); }
+    );
+  },
+  ev => { if (ev.lengthComputable) setProgress(ev.loaded / ev.total * 0.05); },
+  err => { setStatus('MTL load failed: ' + err.message); }
+);
+
+function onModelLoaded(group) {
+  modelGroup = group;
+
+  // ODM exports the OBJ with Z as the UP axis (georeferenced convention).
+  // Three.js uses Y as up. Rotate the model so OBJ-Z → world-Y, so that
+  // "Top" actually looks down at the deck, "Side" reveals the pier wall, etc.
+  group.rotation.x = -Math.PI / 2;
+
+  // Sample OBJ vertex elevations from the ORIGINAL OBJ z-coordinate (= world Y after rotation)
+  const objZs = [];
+  group.traverse(o => {
+    if (o.isMesh) {
+      const pos = o.geometry.attributes.position;
+      totalVerts += pos.count;
+      totalTris  += pos.count / 3;
+      for (let i = 0; i < pos.count; i++) objZs.push(pos.getZ(i));   // OBJ Z = height
+    }
+  });
+
+  scene.add(group);
+
+  // World bbox is computed AFTER rotation, so Y is height, X = pier length, Z = pier width
+  worldBBox = new THREE.Box3().setFromObject(group);
+  const size = worldBBox.getSize(new THREE.Vector3());
+  const center = worldBBox.getCenter(new THREE.Vector3());
+
+  // Correct labels (world frame: X = length, Y = height, Z = width)
+  document.getElementById('dim-x').textContent = size.x.toFixed(1) + ' m';
+  document.getElementById('dim-y').textContent = size.y.toFixed(1) + ' m';
+  document.getElementById('dim-z').textContent = size.z.toFixed(1) + ' m';
+  document.getElementById('m-verts').textContent = Math.round(totalVerts).toLocaleString();
+  document.getElementById('m-faces').textContent = Math.round(totalTris).toLocaleString();
+
+  // Robust pier elevation: 5-95 percentile on OBJ Z (which is now world Y after rotation)
+  objZs.sort((a,b) => a-b);
+  const p05 = objZs[Math.floor(objZs.length*0.05)];
+  const p25 = objZs[Math.floor(objZs.length*0.25)];
+  const p50 = objZs[Math.floor(objZs.length*0.50)];
+  const p75 = objZs[Math.floor(objZs.length*0.75)];
+  const p95 = objZs[Math.floor(objZs.length*0.95)];
+  // dense center sits at the median pier-deck elevation
+  denseCenter = new THREE.Vector3(center.x, p50, center.z);
+  denseSize = new THREE.Vector3(
+    size.x,
+    Math.max((p95 - p05), 8),       // robust pier height (drops skyline/water noise)
+    size.z
+  );
+  // expose for camera presets
+  window._pier = { p05, p25, p50, p75, p95, center, size };
+
+  // Slider — clip from top down (hides skyline / sky-reflection vertices)
+  const sl = document.getElementById('clip-top');
+  document.getElementById('clip-min').textContent = worldBBox.min.y.toFixed(0)+'m';
+  document.getElementById('clip-max').textContent = worldBBox.max.y.toFixed(0)+'m';
+  sl.value = 100;
+  modelClipPlane.constant = worldBBox.max.y + 100;
+  sl.addEventListener('input', () => {
+    const t = parseFloat(sl.value) / 100;
+    const yMax = worldBBox.min.y + (worldBBox.max.y - worldBBox.min.y) * t;
+    // Plane normal is (0,-1,0); points with y < yMax are kept (inside half-space)
+    modelClipPlane.constant = yMax;
+  });
+
+  makeGrid(Math.max(size.x, size.z) * 1.1, worldBBox.min.y);
+
+  fitToPier();
+  setStatus(`Loaded ${name} · ${totalVerts.toLocaleString()} verts · ${Math.round(totalTris).toLocaleString()} faces · ${materialsList.length} materials`);
+  setProgress(1);
+  setTimeout(() => document.getElementById('status').style.display = 'none', 4500);
+}
+
+// ── camera presets (Y = world up after rotation) ──────────────────────────
+function fitToPier() {
+  // Oblique deck-level view showing pier deck + the wall + water beyond
+  if (!denseCenter) return;
+  const half = Math.max(denseSize.x, denseSize.z) * 0.5;
+  // Camera sits OFF the pier (positive Z side), at deck height + 20m, looking at deck
+  const yEye = denseCenter.y + Math.max(denseSize.y * 1.5, 25);
+  const zEye = denseCenter.z + half * 1.1;
+  camera.position.set(denseCenter.x + half * 0.45, yEye, zEye);
+  controls.target.copy(denseCenter);
+  controls.update();
+}
+function fitAll() {
+  if (!worldBBox) return;
+  const size = worldBBox.getSize(new THREE.Vector3());
+  const center = worldBBox.getCenter(new THREE.Vector3());
+  const d = Math.max(size.x, size.z) * 1.1;
+  camera.position.set(center.x + d * 0.7, center.y + d * 0.5, center.z + d * 0.9);
+  controls.target.copy(center);
+  controls.update();
+}
+function viewTop() {
+  // Nadir
+  if (!denseCenter) return;
+  const d = Math.max(denseSize.x, denseSize.z) * 1.0;
+  camera.position.set(denseCenter.x, denseCenter.y + d, denseCenter.z + 0.01);
+  controls.target.copy(denseCenter);
+  controls.update();
+}
+function viewSide() {
+  // Pure horizontal side view — long pier axis across screen, height visible
+  if (!denseCenter) return;
+  const half = Math.max(denseSize.x, denseSize.z) * 0.5;
+  camera.position.set(denseCenter.x, denseCenter.y, denseCenter.z + half * 1.4);
+  controls.target.copy(denseCenter);
+  controls.update();
+}
+function viewWall() {
+  // "Wall scan" — close-in, low altitude, off the pier over the water,
+  // looking horizontally at the pier face. Mimics the H20T wall-scan photos.
+  if (!denseCenter) return;
+  const halfW = denseSize.z * 0.5;          // half-width across the pier
+  const yWater = denseCenter.y - denseSize.y * 0.3;   // near water level
+  const zEye = denseCenter.z + halfW + 25;  // ~25m off the pier
+  camera.position.set(denseCenter.x, yWater, zEye);
+  controls.target.set(denseCenter.x, denseCenter.y, denseCenter.z + halfW * 0.5);
+  controls.update();
+}
+function viewOblique() { fitToPier(); }
+
+document.getElementById('btn-fit-pier').onclick = viewWall;       // primary CTA = wall view
+document.getElementById('btn-fit-all').onclick  = fitAll;
+document.getElementById('btn-top').onclick      = viewTop;
+document.getElementById('btn-side').onclick     = viewSide;
+document.getElementById('btn-oblique').onclick  = fitToPier;
+// Re-label the primary button
+document.getElementById('btn-fit-pier').textContent = 'Wall view';
+document.getElementById('btn-fit-pier').title = 'Camera over water, deck height, looking at pier wall (mimics H20T wall-scan photos)';
+
+let wireOn = false;
+document.getElementById('btn-wire').onclick = function() {
+  wireOn = !wireOn;
+  this.classList.toggle('on', wireOn);
+  materialsList.forEach(m => { m.wireframe = wireOn; });
+};
+document.getElementById('btn-axes').onclick = function() {
+  axesHelper.visible = !axesHelper.visible;
+  this.classList.toggle('on', axesHelper.visible);
+};
+document.getElementById('btn-grid').onclick = function() {
+  if (grid) grid.visible = !grid.visible;
+  this.classList.toggle('on', grid ? grid.visible : false);
+};
+
+let lightPreset = 0;
+const btnLight = document.getElementById('btn-lights');
+btnLight.onclick = () => {
+  lightPreset = (lightPreset + 1) % 3;
+  btnLight.textContent = lightPreset === 0 ? 'Light · balanced'
+                       : lightPreset === 1 ? 'Light · dramatic'
+                       : 'Light · flat';
+  if (lightPreset === 0) {
+    lights.ambient.intensity = 0.55; lights.hemi.intensity = 0.40;
+    lights.key.intensity = 1.25;     lights.fill.intensity = 0.55; lights.rim.intensity = 0.55;
+  } else if (lightPreset === 1) {
+    lights.ambient.intensity = 0.20; lights.hemi.intensity = 0.10;
+    lights.key.intensity = 1.7;      lights.fill.intensity = 0.25; lights.rim.intensity = 0.9;
+  } else {
+    lights.ambient.intensity = 1.2;  lights.hemi.intensity = 0.6;
+    lights.key.intensity = 0.4;      lights.fill.intensity = 0.4;  lights.rim.intensity = 0.0;
+  }
+};
+
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// ── render + stats loop ───────────────────────────────────────────────────
+const fpsEl = document.getElementById('fps');
+const callsEl = document.getElementById('calls');
+const trisEl = document.getElementById('tris');
+let lastT = performance.now(), frames = 0;
+function loop() {
+  controls.update();
+  renderer.render(scene, camera);
+  frames++;
+  const now = performance.now();
+  if (now - lastT > 500) {
+    fpsEl.textContent = (frames * 1000 / (now - lastT)).toFixed(0);
+    frames = 0; lastT = now;
+    const info = renderer.info.render;
+    callsEl.textContent = info.calls.toLocaleString();
+    trisEl.textContent = info.triangles.toLocaleString();
+  }
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>

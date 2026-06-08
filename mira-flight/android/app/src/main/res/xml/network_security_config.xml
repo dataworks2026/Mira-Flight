@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  The Mira backend is served over plain HTTP (http://3.144.48.124) and ArduPilot
+  The Mira backend is served over plain HTTP (http://3.133.43.231) and ArduPilot
   SITL streams over the LAN, so cleartext must be permitted. Release builds default
   usesCleartextTraffic to false, which blocked login in the standalone bundle — this
   config restores cleartext for the field/standalone APK.

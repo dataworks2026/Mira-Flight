@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Mira Twin Viewer</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background:#0A0E14; font-family: -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif; }
+  #ui { position:fixed; top:8px; left:8px; right:8px; color:#F8FAFC; font-size:12px; line-height:1.4; z-index:10; pointer-events:none; }
+  #title { font-weight:700; font-size:16px; letter-spacing:0.5px; color:#00D4FF; margin-bottom:4px; }
+  #status { background:rgba(10,14,20,0.7); padding:6px 10px; border-radius:6px; max-width:600px; display:inline-block; }
+  #bar { height:4px; background:#1E2530; margin-top:6px; border-radius:2px; overflow:hidden; }
+  #bar > div { height:100%; background:#00D4FF; width:0%; transition: width 0.3s; }
+  #stats { position:fixed; bottom:8px; right:8px; color:#94A3B8; font-size:11px; background:rgba(10,14,20,0.7); padding:4px 8px; border-radius:4px; z-index:10; }
+  canvas { display:block; }
+</style>
+</head>
+<body>
+<div id="ui">
+  <div id="title">MIRA TWIN — <span id="mname">…</span></div>
+  <div id="status">Loading…<div id="bar"><div></div></div></div>
+</div>
+<div id="stats"></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';
+
+const params = new URLSearchParams(location.search);
+const mid = params.get('mid') || '2abe1a45-0fc7-4e92-9d87-5c7cc7b0c1b8';
+const name = params.get('name') || 'Yankee Pier';
+document.getElementById('mname').textContent = name;
+
+const status = document.getElementById('status');
+const bar = document.querySelector('#bar > div');
+const stats = document.getElementById('stats');
+const setStatus = (s) => { status.firstChild.textContent = s; };
+const setProgress = (pct) => { bar.style.width = (pct*100).toFixed(0) + '%'; };
+
+// ── three.js scene ────────────────────────────────────────────────────────────
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0e14);
+
+const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.1, 5000);
+camera.position.set(50, 50, 50);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(devicePixelRatio);
+document.body.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+
+// Lights — bright ambient + directional so the texture is visible regardless of normals
+scene.add(new THREE.AmbientLight(0xffffff, 1.0));
+const sun = new THREE.DirectionalLight(0xffffff, 1.5);
+sun.position.set(100, 200, 100);
+scene.add(sun);
+
+// Ground grid for orientation
+const grid = new THREE.GridHelper(200, 40, 0x262e3d, 0x1d2433);
+scene.add(grid);
+
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// ── load the textured OBJ ────────────────────────────────────────────────────
+const dataBase = `/twin-data/${mid}/odm_texturing`;
+const mtlUrl   = `${dataBase}/odm_textured_model_geo.mtl`;
+const objUrl   = `${dataBase}/odm_textured_model_geo.obj`;
+
+setStatus(`Fetching textured model… (${mid.slice(0,8)})`);
+
+const mtlLoader = new MTLLoader().setPath(`${dataBase}/`).setResourcePath(`${dataBase}/`);
+mtlLoader.load('odm_textured_model_geo.mtl',
+  (materials) => {
+    materials.preload();
+    setStatus('Materials loaded. Fetching geometry…');
+    setProgress(0.3);
+
+    const objLoader = new OBJLoader();
+    objLoader.setMaterials(materials);
+    objLoader.load(objUrl,
+      (obj) => {
+        // Center + frame the model
+        const box = new THREE.Box3().setFromObject(obj);
+        const center = box.getCenter(new THREE.Vector3());
+        const size = box.getSize(new THREE.Vector3());
+        obj.position.sub(center);
+        scene.add(obj);
+
+        const maxDim = Math.max(size.x, size.y, size.z);
+        camera.position.set(maxDim*0.8, maxDim*0.7, maxDim*0.8);
+        controls.target.set(0,0,0);
+        controls.update();
+
+        // Counts
+        let tris=0, verts=0;
+        obj.traverse(o => { if (o.isMesh && o.geometry) {
+          const pos = o.geometry.attributes.position;
+          if (pos) verts += pos.count;
+          const idx = o.geometry.index;
+          tris += (idx ? idx.count : (pos ? pos.count : 0)) / 3;
+        }});
+        stats.textContent = `${verts.toLocaleString()} verts · ${Math.round(tris).toLocaleString()} tris · model size ${maxDim.toFixed(1)}m`;
+        setStatus('Loaded.');
+        setTimeout(() => { status.style.opacity = '0.3'; }, 2000);
+        setProgress(1);
+      },
+      (xhr) => {
+        if (xhr.lengthComputable) {
+          const p = 0.3 + (xhr.loaded / xhr.total) * 0.7;
+          setProgress(p);
+          setStatus(`Loading geometry… ${(xhr.loaded/1e6).toFixed(1)}MB / ${(xhr.total/1e6).toFixed(1)}MB`);
+        }
+      },
+      (err) => {
+        setStatus(`Failed to load OBJ: ${err.message || err}. Is ODM finished?`);
+      }
+    );
+  },
+  (xhr) => { if (xhr.lengthComputable) setProgress(xhr.loaded / xhr.total * 0.3); },
+  (err) => {
+    // No MTL — fall back to loading OBJ without materials (white mesh)
+    setStatus('No materials found, loading geometry without texture…');
+    new OBJLoader().load(objUrl,
+      (obj) => {
+        const mat = new THREE.MeshStandardMaterial({ color: 0xcccccc, flatShading: false });
+        obj.traverse(o => { if (o.isMesh) o.material = mat; });
+        const box = new THREE.Box3().setFromObject(obj);
+        const center = box.getCenter(new THREE.Vector3());
+        const size = box.getSize(new THREE.Vector3());
+        obj.position.sub(center);
+        scene.add(obj);
+        const maxDim = Math.max(size.x, size.y, size.z);
+        camera.position.set(maxDim*0.8, maxDim*0.7, maxDim*0.8);
+        controls.update();
+        setStatus('Loaded (untextured).'); setProgress(1);
+      },
+      undefined,
+      (err2) => setStatus(`OBJ also missing — ODM may not be finished yet. (${err2.message || err2})`)
+    );
+  }
+);
+
+// render loop
+(function loop(){
+  requestAnimationFrame(loop);
+  controls.update();
+  renderer.render(scene, camera);
+})();
+</script>
+</body>
+</html>

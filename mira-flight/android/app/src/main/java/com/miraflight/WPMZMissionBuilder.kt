@@ -54,21 +54,32 @@ object WPMZMissionBuilder {
     private const val DEF_TAKE_OFF_HEIGHT = 20.0
     private const val DEF_GLOBAL_TRANSITION_SPEED = 10.0
     private const val DEF_AUTO_FLIGHT_SPEED = 5.0
+    private const val DEF_GLOBAL_FLIGHT_HEIGHT = 20.0
+    // Minimum altitude WPMZ tolerates without SEGV in PPalGenerator. The first
+    // crash on hardware was a 3 m altitude mission — DJI's SDK doesn't handle
+    // ultra-low altitudes. Clamp to this floor before generating the KMZ.
+    private const val MIN_SAFE_ALTITUDE = 5.0
 
     fun buildAndWrite(waypoints: ReadableArray, kmzOutPath: String): Boolean {
-        val waylineMission = createWaylineMission()
-        val missionConfig = createMissionConfig()
-        val template = createTemplate(waypoints)
+        try {
+            Log.i(TAG, "buildAndWrite: count=${waypoints.size()} out=$kmzOutPath")
+            val waylineMission = createWaylineMission()
+            val missionConfig = createMissionConfig()
+            val template = createTemplate(waypoints)
 
-        val resultPath = WPMZManager.getInstance()
-            .generateKMZFile(kmzOutPath, waylineMission, missionConfig, template)
+            val resultPath = WPMZManager.getInstance()
+                .generateKMZFile(kmzOutPath, waylineMission, missionConfig, template)
 
-        return if (resultPath != null) {
-            Log.i(TAG, "KMZ written to $resultPath")
-            true
-        } else {
-            Log.e(TAG, "generateKMZFile returned null — KMZ not written")
-            false
+            return if (resultPath != null) {
+                Log.i(TAG, "KMZ written to $resultPath")
+                true
+            } else {
+                Log.e(TAG, "generateKMZFile returned null — KMZ not written")
+                false
+            }
+        } catch (e: Throwable) {
+            Log.e(TAG, "generateKMZFile threw: ${e.javaClass.simpleName}: ${e.message}", e)
+            return false
         }
     }
 
@@ -127,9 +138,14 @@ object WPMZMissionBuilder {
 
             val lat = wp.getDouble("latitude")
             val lon = wp.getDouble("longitude")
-            val alt = wp.getDouble("altitude_m")
-            val speed = wp.getDouble("speed_ms")
-            val heading = wp.getDouble("heading_deg")
+            val rawAlt = wp.getDouble("altitude_m")
+            // Clamp altitude — the SDK SEGVs in PPalGenerator on ultra-low altitudes (<5 m).
+            // First hardware crash was a 3 m mission.
+            val alt = if (rawAlt < MIN_SAFE_ALTITUDE) {
+                Log.w(TAG, "altitude $rawAlt m below minimum, clamping to $MIN_SAFE_ALTITUDE m")
+                MIN_SAFE_ALTITUDE
+            } else rawAlt
+            val speed = wp.getDouble("speed_ms").coerceIn(1.0, 15.0)
             val gimbalPitch = wp.getDouble("gimbal_pitch")
             val idx = if (wp.hasKey("sequence_index")) wp.getInt("sequence_index") else i
 
@@ -141,15 +157,15 @@ object WPMZMissionBuilder {
             waypoint.speed = speed
             waypoint.useGlobalTurnParam = true
             waypoint.gimbalPitchAngle = gimbalPitch
-
-            // Yaw: SMOOTH_TRANSITION + yawAngle locks heading to the mission-planner value.
-            // (SMOOTH_TRANSITION is the confirmed SDK value that enables yawAngle; FIXED_YAW
-            // is not present in the v1.0.5 enum.)
+            // Per-waypoint yawParam MUST be non-null — DJI's PPALController.generate
+            // does a JNI null check on its byte[] inputs and aborts with
+            // "java_array == null" if any field serializes to null (then tries to
+            // allocate a 369 MB buffer with a garbage size field). Use FOLLOW_WAYLINE
+            // (drone faces direction of travel) with no enableYawAngle / yawPathMode —
+            // those were the SEGV-triggering combo.
             val yawParam = WaylineWaypointYawParam()
-            yawParam.yawMode = WaylineWaypointYawMode.SMOOTH_TRANSITION
-            yawParam.yawAngle = heading
-            yawParam.enableYawAngle = true
-            yawParam.yawPathMode = WaylineWaypointYawPathMode.FOLLOW_BAD_ARC
+            yawParam.yawMode = WaylineWaypointYawMode.FOLLOW_WAYLINE
+            yawParam.enableYawAngle = false
             yawParam.poiLocation = WaylineLocationCoordinate3D(lat, lon, alt)
             waypoint.yawParam = yawParam
             waypoint.isWaylineWaypointYawParamSet = true
@@ -169,15 +185,22 @@ object WPMZMissionBuilder {
         val info = WaylineTemplateWaypointInfo()
         info.waypoints = waylineWaypoints
         info.actionGroups = actionGroups
-        info.globalFlightHeight = if (waylineWaypoints.isNotEmpty()) waylineWaypoints[0].height else 50.0
+        // globalFlightHeight: use the (clamped) first waypoint altitude, never below the floor.
+        val firstAlt = if (waylineWaypoints.isNotEmpty()) waylineWaypoints[0].height else DEF_GLOBAL_FLIGHT_HEIGHT
+        info.globalFlightHeight = firstAlt.coerceAtLeast(MIN_SAFE_ALTITUDE)
         info.isGlobalFlightHeightSet = true
         info.globalTurnMode = WaylineWaypointTurnMode.TO_POINT_AND_STOP_WITH_DISCONTINUITY_CURVATURE
         info.useStraightLine = true
         info.isTemplateGlobalTurnModeSet = true
+        // Global yaw: drone faces direction of travel. Use the FIRST waypoint as a
+        // safe non-null poiLocation (rather than an empty 0,0,0 default that may segv).
         val globalYaw = WaylineWaypointYawParam()
         globalYaw.yawMode = WaylineWaypointYawMode.FOLLOW_WAYLINE
-        globalYaw.poiLocation = WaylineLocationCoordinate3D()
+        globalYaw.poiLocation = if (waylineWaypoints.isNotEmpty())
+            WaylineLocationCoordinate3D(waylineWaypoints[0].location.latitude, waylineWaypoints[0].location.longitude, waylineWaypoints[0].height)
+        else WaylineLocationCoordinate3D(0.0, 0.0, 0.0)
         info.globalYawParam = globalYaw
+        info.isTemplateGlobalYawParamSet = true
         info.isTemplateGlobalYawParamSet = true
         info.pitchMode = WaylineWaypointPitchMode.USE_POINT_SETTING
         return info

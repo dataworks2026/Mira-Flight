@@ -227,7 +227,7 @@ export default function MissionReviewScreen() {
     <View style={[s.footer, isLandscape && s.footerLandscape]}>
       <TouchableOpacity
         style={s.dashBtn}
-        onPress={() => Linking.openURL('http://3.144.48.124/dashboard')}>
+        onPress={() => Linking.openURL('http://3.133.43.231/dashboard')}>
         <Text style={s.dashBtnText}>Open Dashboard</Text>
       </TouchableOpacity>
       <TouchableOpacity style={s.homeBtn} onPress={handleReturnHome}>

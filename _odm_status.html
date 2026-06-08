@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>BAT Pier 4 — Live Build Status</title>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<style>
+  :root {
+    --bg: #070A10;
+    --panel: #0F151E;
+    --panel2: #131B26;
+    --border: #1F2A38;
+    --txt: #F1F5F9;
+    --muted: #94A3B8;
+    --faint: #5b6878;
+    --cyan: #00D4FF;
+    --green: #34D399;
+    --amber: #FBBF24;
+    --red: #F87171;
+    --violet: #A78BFA;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin:0; padding:0; min-height:100%; background:var(--bg); color:var(--txt);
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  body { padding: 22px; max-width: 1280px; margin: 0 auto; }
+  h1 { font-size: 22px; letter-spacing: 0.5px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+  .grid-2 { display:grid; grid-template-columns: 2fr 1fr; gap: 14px; }
+  .grid-3 { display:grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .grid-4 { display:grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .grid-6 { display:grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
+  .card { background:var(--panel); border:1px solid var(--border); border-radius:12px;
+          padding:18px; margin-bottom:14px; }
+  .card h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.9px;
+            color: var(--faint); margin: 0 0 12px; font-weight:600; }
+  .kv { background:var(--panel2); border:1px solid var(--border); border-radius:8px; padding:11px 13px; }
+  .kv .label { font-size:10px; text-transform:uppercase; letter-spacing:0.8px; color:var(--faint); }
+  .kv .val { font-size:21px; font-weight:600; margin-top:4px; line-height:1.1; }
+  .kv .val.sm { font-size:14px; }
+  .kv .sublbl { font-size:11px; color:var(--muted); margin-top:3px; }
+  .cyan { color: var(--cyan); }
+  .green { color: var(--green); }
+  .amber { color: var(--amber); }
+  .red { color: var(--red); }
+  .violet { color: var(--violet); }
+  .bar-outer { height:8px; background:#1E2530; border-radius:4px; overflow:hidden; margin-top:8px; }
+  .bar-inner { height:100%; background: linear-gradient(90deg, var(--cyan), var(--green)); width:0%;
+              transition: width 0.5s ease-out; }
+  .bar-outer.amber .bar-inner { background: linear-gradient(90deg, var(--amber), var(--red)); }
+
+  .stage-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .stage-pill { font-size:10px; padding:6px 9px; border-radius:6px; font-weight:600; letter-spacing:0.4px;
+               border:1px solid var(--border); background:var(--panel2); color:var(--faint);
+               text-transform: uppercase; transition: all 0.3s; }
+  .stage-pill.done { color: var(--green); border-color:#143028; background:#0A1812; }
+  .stage-pill.active { color: var(--cyan); border-color:#0a3a4d; background:#0a1c26;
+                      box-shadow: 0 0 12px rgba(0,212,255,0.4); animation: pulse-glow 2s infinite; }
+  @keyframes pulse-glow { 0%,100% { box-shadow: 0 0 8px rgba(0,212,255,0.4); }
+                        50% { box-shadow: 0 0 18px rgba(0,212,255,0.7); } }
+
+  .log { background:#04060A; border:1px solid var(--border); border-radius:8px; padding:12px;
+        font-family: "JetBrains Mono", Consolas, monospace; font-size:11px; line-height:1.55;
+        color:#9BA8B8; max-height:300px; overflow-y:auto; white-space:pre-wrap;
+        word-break: break-all; }
+  .log .err { color: var(--red); }
+  .log .warn { color: var(--amber); }
+  .log .info { color: var(--muted); }
+  .log .succ { color: var(--green); }
+
+  a { color: var(--cyan); text-decoration:none; }
+  a:hover { text-decoration: underline; }
+  code { background:#1a2230; padding:1px 5px; border-radius:3px; font-size:90%; }
+  .right { text-align: right; }
+  .small { font-size: 11px; color: var(--faint); }
+  .auto { display:inline-flex; align-items:center; margin-left:10px; }
+  .auto .dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--green);
+              margin-right:6px; animation: pulse 1.6s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.25;} }
+  .pulse-dot { display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--cyan);
+              margin-right:5px; animation: pulse 1s infinite; }
+
+  table { width:100%; border-collapse: collapse; font-size: 12px; }
+  table th { text-align: left; color: var(--faint); font-weight: 600; text-transform: uppercase;
+             font-size: 10px; letter-spacing: 0.6px; padding: 8px 4px; border-bottom: 1px solid var(--border); }
+  table td { padding: 9px 4px; border-bottom: 1px solid var(--border); color: var(--txt); }
+  table td.muted { color: var(--muted); }
+  table td.faint { color: var(--faint); }
+
+  .err-box { background: #2a0a0a; border: 1px solid #5a1d1d; color: var(--red); padding: 10px 13px;
+            border-radius: 8px; font-size: 12px; margin-top: 10px; font-family: monospace; }
+
+  .heartbeat { display: inline-block; margin-left: 8px; }
+  .stale { color: var(--amber) !important; }
+  .danger { color: var(--red) !important; }
+</style>
+</head>
+<body>
+
+<h1>Yankee Pier — Live Build</h1>
+<div class="sub">
+  Yankee Pier · Governors Island ·
+  <code id="mid">2abe1a45-0fc7-4e92-9d87-5c7cc7b0c1b8</code> ·
+  ULTRA-quality ODM 3.6.0 ·
+  <span class="auto"><span class="dot"></span><span class="small" id="last-poll">just started</span></span>
+</div>
+
+<!-- TOP ROW: Container / Stage timeline -->
+<div class="card">
+  <h2>Container · OpenDroneMap pipeline</h2>
+  <div class="grid-4">
+    <div class="kv">
+      <div class="label">Container uptime</div>
+      <div class="val cyan" id="uptime">…</div>
+      <div class="sublbl">Started <span id="uptime-since">…</span></div>
+    </div>
+    <div class="kv">
+      <div class="label">CPU</div>
+      <div class="val green" id="cpu">…</div>
+      <div class="sublbl" id="cpu-note">…</div>
+    </div>
+    <div class="kv">
+      <div class="label">RAM</div>
+      <div class="val" id="ram">…</div>
+      <div class="bar-outer"><div class="bar-inner" id="ram-bar"></div></div>
+      <div class="sublbl" id="ram-note">…</div>
+    </div>
+    <div class="kv">
+      <div class="label">Block I/O (read / write)</div>
+      <div class="val sm" id="bio">…</div>
+      <div class="sublbl">Disk free host: <span id="disk-free">…</span></div>
+    </div>
+  </div>
+
+  <div style="margin-top:18px;">
+    <div class="label" style="font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:var(--faint);margin-bottom:8px;">
+      Pipeline stages
+    </div>
+    <div class="stage-row" id="stage-row"></div>
+  </div>
+</div>
+
+<!-- ACTIVE STAGE detail -->
+<div class="card">
+  <h2>Active stage <span id="active-tag" style="color:var(--cyan)"></span></h2>
+
+  <div class="grid-4">
+    <div class="kv">
+      <div class="label">Sub-task</div>
+      <div class="val cyan sm" id="substage">…</div>
+      <div class="sublbl" id="substage-note">…</div>
+    </div>
+    <div class="kv">
+      <div class="label">Progress</div>
+      <div class="val green" id="substage-pct">…</div>
+      <div class="bar-outer"><div class="bar-inner" id="substage-bar"></div></div>
+    </div>
+    <div class="kv">
+      <div class="label">Sub-task ETA</div>
+      <div class="val amber" id="substage-eta">…</div>
+      <div class="sublbl" id="substage-rate">…</div>
+    </div>
+    <div class="kv">
+      <div class="label">Last log line</div>
+      <div class="val sm" id="last-log-age">…</div>
+      <div class="sublbl" id="last-log-ts">…</div>
+    </div>
+  </div>
+</div>
+
+<!-- TIME breakdown -->
+<div class="card">
+  <h2>Time</h2>
+  <div class="grid-4">
+    <div class="kv">
+      <div class="label">Total elapsed (container)</div>
+      <div class="val cyan" id="t-total">…</div>
+      <div class="sublbl" id="t-started">started …</div>
+    </div>
+    <div class="kv">
+      <div class="label">In current stage</div>
+      <div class="val sm" id="t-in-stage">…</div>
+      <div class="sublbl" id="t-stage-started">stage started …</div>
+    </div>
+    <div class="kv">
+      <div class="label">Sub-task ETA (ODM)</div>
+      <div class="val amber sm" id="t-substage-eta">…</div>
+      <div class="sublbl">from OpenMVS / OpenSfM progress bar</div>
+    </div>
+    <div class="kv">
+      <div class="label">Est. total wall-clock</div>
+      <div class="val green sm" id="t-total-eta">…</div>
+      <div class="sublbl" id="t-finish-at">finish ~ …</div>
+    </div>
+  </div>
+  <div style="margin-top:14px;">
+    <div class="label" style="font-size:10px;text-transform:uppercase;letter-spacing:0.8px;color:var(--faint);margin-bottom:8px;">
+      Per-stage timing
+    </div>
+    <table>
+      <thead><tr><th>Stage</th><th>Started</th><th>Finished</th><th>Duration</th></tr></thead>
+      <tbody id="time-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- INTERMEDIATE OUTPUTS -->
+<div class="card">
+  <h2>Intermediate outputs · what's been written to disk</h2>
+  <table>
+    <thead>
+      <tr><th>Artifact</th><th>Size</th><th>Path</th><th>Status</th></tr>
+    </thead>
+    <tbody id="outputs-tbody">
+      <!-- rows injected -->
+    </tbody>
+  </table>
+</div>
+
+<!-- BOTTOM ROW: Log + DensifyPointCloud info -->
+<div class="grid-2">
+  <div class="card">
+    <h2>Live log tail · last 40 lines</h2>
+    <div class="log" id="log">loading…</div>
+  </div>
+
+  <div class="card">
+    <h2>OpenMVS densify history</h2>
+    <div id="densify-info">…</div>
+    <div style="margin-top:18px;">
+      <h2 style="margin-bottom:8px;">Recent errors / warnings</h2>
+      <div id="errors-box" class="small" style="color:var(--muted);">(none in the last poll)</div>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="font-size:12px;line-height:1.7;">
+  <strong style="color:var(--violet)">When build completes:</strong> the OBJ lands at
+  <a id="obj-link" href="#" target="_blank">/twin-data/&lt;mid&gt;/odm_texturing/odm_textured_model_geo.obj</a>
+  and the textured pier auto-renders inside
+  <a id="viewer-link" href="#" target="_blank">/twin/?mid=…</a>
+  (also embedded inline in the Brooklyn Army Terminal asset page in the dashboard).
+</div>
+
+<script>
+const STATUS_JSON = `/twin-data/2abe1a45-0fc7-4e92-9d87-5c7cc7b0c1b8/status.json?v=${Date.now()}`;
+const RAW_LOG_URL = `/twin-data/2abe1a45-0fc7-4e92-9d87-5c7cc7b0c1b8/odm_run.log`;
+
+// ── helpers ────────────────────────────────────────────────────────────────
+function fmtDuration(seconds) {
+  if (seconds == null || isNaN(seconds)) return '—';
+  seconds = Math.floor(seconds);
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  const parts = [];
+  if (d) parts.push(d + 'd');
+  if (h || d) parts.push(h + 'h');
+  if (m || h || d) parts.push(m + 'm');
+  parts.push(s + 's');
+  return parts.join(' ');
+}
+function fmtBytes(b) {
+  if (!b && b !== 0) return '—';
+  if (b >= 1e9) return (b/1e9).toFixed(2) + ' GB';
+  if (b >= 1e6) return (b/1e6).toFixed(1) + ' MB';
+  if (b >= 1e3) return (b/1e3).toFixed(1) + ' KB';
+  return b + ' B';
+}
+function fmtMB(mb) {
+  if (mb == null) return '—';
+  if (mb >= 1024) return (mb/1024).toFixed(2) + ' GB';
+  return mb.toFixed(1) + ' MB';
+}
+function fmtTime(iso) {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleTimeString('en-US', { hour12: false }) + ' UTC';
+  } catch { return iso; }
+}
+function ageSeconds(iso) {
+  if (!iso) return null;
+  return (Date.now() - new Date(iso).getTime()) / 1000;
+}
+function htmlEscape(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+// Parse ODM-style duration strings like "1h7m26s" or "23m" or "45s"
+function parseODMDuration(s) {
+  if (!s) return null;
+  s = String(s).trim();
+  let total = 0;
+  const re = /(\d+)\s*([dhms])/g;
+  let m;
+  while ((m = re.exec(s)) !== null) {
+    const n = parseInt(m[1], 10);
+    const u = m[2];
+    if (u === 'd') total += n * 86400;
+    if (u === 'h') total += n * 3600;
+    if (u === 'm') total += n * 60;
+    if (u === 's') total += n;
+  }
+  return total > 0 ? total : null;
+}
+
+const STAGES = ['dataset','split','merge','opensfm','openmvs',
+                'odm_filterpoints','odm_meshing','mvs_texturing','odm_georeferencing'];
+const STAGE_LABELS = {
+  dataset: 'dataset', split: 'split', merge: 'merge',
+  opensfm: 'opensfm', openmvs: 'openmvs',
+  odm_filterpoints: 'filterpoints', odm_meshing: 'meshing',
+  mvs_texturing: 'texturing', odm_georeferencing: 'georef'
+};
+
+// Initial render of stage pills
+const stageRow = document.getElementById('stage-row');
+STAGES.forEach(s => {
+  const pill = document.createElement('span');
+  pill.className = 'stage-pill';
+  pill.dataset.stage = s;
+  pill.textContent = STAGE_LABELS[s];
+  stageRow.appendChild(pill);
+});
+
+// ── render ────────────────────────────────────────────────────────────────
+async function tick() {
+  let data;
+  try {
+    const r = await fetch(STATUS_JSON.replace(/v=\d+/, 'v=' + Date.now()), { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    data = await r.json();
+  } catch (e) {
+    document.getElementById('last-poll').innerHTML = '<span class="danger">fetch error: ' + e.message + '</span>';
+    return;
+  }
+
+  // top row: container
+  const c = data.container || {};
+  document.getElementById('uptime').textContent = fmtDuration(c.uptime_seconds);
+  if (c.uptime_seconds != null) {
+    const since = new Date(Date.now() - c.uptime_seconds * 1000);
+    document.getElementById('uptime-since').textContent = since.toLocaleString('en-US', { hour12: false });
+  }
+  const cpuEl = document.getElementById('cpu');
+  cpuEl.textContent = (c.cpu_pct != null) ? c.cpu_pct.toFixed(1) + '%' : '—';
+  document.getElementById('cpu-note').textContent =
+    c.cpu_pct == null ? '' :
+    c.cpu_pct >= 800 ? 'fully parallel (8+ cores active)' :
+    c.cpu_pct >= 100 ? 'multi-threaded' :
+    c.cpu_pct >= 20  ? 'serial work / I/O bound' :
+                       'idle / waiting on disk';
+  cpuEl.classList.remove('green','amber','red');
+  if (c.cpu_pct >= 800) cpuEl.classList.add('green');
+  else if (c.cpu_pct >= 100) cpuEl.classList.add('cyan');
+  else cpuEl.classList.add('amber');
+
+  const ramEl = document.getElementById('ram');
+  ramEl.textContent = c.mem_str || '—';
+  ramEl.classList.remove('green','amber','red');
+  if (c.mem_pct != null) {
+    document.getElementById('ram-bar').style.width = c.mem_pct + '%';
+    document.getElementById('ram-bar').parentElement.classList.toggle('amber', c.mem_pct >= 80);
+    if (c.mem_pct >= 90) ramEl.classList.add('red');
+    else if (c.mem_pct >= 80) ramEl.classList.add('amber');
+    else ramEl.classList.add('green');
+    document.getElementById('ram-note').textContent = c.mem_pct.toFixed(1) + '% of container cap' +
+      (c.mem_pct >= 85 ? ' — close to OOM threshold' : '');
+  }
+  document.getElementById('bio').textContent = c.block_io || '—';
+  document.getElementById('disk-free').textContent = data.host && data.host.disk_free_gib != null
+    ? data.host.disk_free_gib + ' GB' : '—';
+
+  // stage pills
+  document.querySelectorAll('.stage-pill').forEach(p => {
+    p.classList.remove('done','active');
+    const s = p.dataset.stage;
+    const st = data.stages[s];
+    if (st === 'done') p.classList.add('done');
+    else if (st === 'active') p.classList.add('active');
+  });
+
+  // active stage detail
+  const active = data.active_stage;
+  document.getElementById('active-tag').textContent = active ? '· ' + STAGE_LABELS[active] : '';
+  const sub = (data.openmvs || {}).substage || null;
+  const lp = (data.openmvs || {}).latest_progress || null;
+
+  let subName = '—', subNote = '', pctVal = null, etaStr = '—', rateStr = '';
+
+  if (active === 'openmvs' && sub) {
+    const labels = {
+      starting: 'Initialising DensifyPointCloud',
+      estimating: 'Estimating depth maps',
+      geo_consistent: 'Geo-consistent refinement',
+      filtering: 'Filtering depth maps (cross-image)',
+      fusing: 'Fusing depth maps → dense cloud',
+      complete: 'OpenMVS complete'
+    };
+    subName = labels[sub.name] || sub.name;
+    subNote = sub.tiled ? 'tiled mode (lower-RAM, slower)' : 'standard mode';
+    if (sub.name === 'filtering') {
+      pctVal = sub.pct;
+      subNote += ` — ${sub.done} / ${sub.total} files written to disk`;
+      const rate = data.openmvs.filter_rate_per_min;
+      const eta  = data.openmvs.filter_eta_seconds;
+      if (rate) rateStr = rate.toFixed(1) + ' files / min (measured from disk)';
+      if (eta != null) etaStr = fmtDuration(eta);
+    } else if (sub.name === 'geo_consistent' || sub.name === 'estimating') {
+      pctVal = sub.pct;
+      etaStr = sub.eta_str;
+      rateStr = 'OpenMVS-reported (may be optimistic at end of pass)';
+    } else if (sub.name === 'fusing') {
+      subNote += ` — depth maps consumed: ${sub.depthmaps_filtered}`;
+    }
+  } else if (active && lp) {
+    subName = lp.label;
+    pctVal  = lp.pct;
+    etaStr  = lp.eta_str;
+  } else if (active) {
+    subName = active;
+  }
+
+  document.getElementById('substage').textContent = subName;
+  document.getElementById('substage-note').textContent = subNote;
+  document.getElementById('substage-pct').textContent = pctVal != null ? pctVal.toFixed(1) + '%' : '—';
+  document.getElementById('substage-bar').style.width = (pctVal || 0) + '%';
+  document.getElementById('substage-eta').textContent = etaStr || '—';
+  document.getElementById('substage-rate').textContent = rateStr || '';
+
+  const logAge = ageSeconds(data.log.last_modified);
+  const logAgeEl = document.getElementById('last-log-age');
+  if (logAge != null) {
+    logAgeEl.textContent = fmtDuration(logAge) + ' ago';
+    logAgeEl.classList.toggle('stale', logAge > 300);
+  }
+  document.getElementById('last-log-ts').textContent = fmtTime(data.log.last_modified);
+
+  // ── Time breakdown ──────────────────────────────────────────────────────
+  // Approximate per-stage budget for THIS dataset (140 photos @ 1080p, ULTRA).
+  // Numbers are seconds; revised as stages complete with real measured durations.
+  const STAGE_BUDGET = {
+    dataset: 30,
+    split: 5,
+    merge: 5,
+    opensfm: 600,
+    openmvs: 1800,
+    odm_filterpoints: 120,
+    odm_meshing: 600,
+    mvs_texturing: 600,
+    odm_georeferencing: 60
+  };
+
+  const totalSec = c.uptime_seconds;
+  document.getElementById('t-total').textContent = totalSec != null ? fmtDuration(totalSec) : '—';
+  if (c.uptime_seconds != null) {
+    const startedAt = new Date(Date.now() - c.uptime_seconds * 1000);
+    document.getElementById('t-started').textContent = 'started ' + startedAt.toLocaleString('en-US',{hour12:false});
+  }
+
+  // Time-in-stage based on stage_started for the active stage
+  const stageStarted = (data.stage_started || {})[active];
+  let inStageSec = null;
+  if (stageStarted) {
+    inStageSec = (Date.now() - new Date(stageStarted).getTime()) / 1000;
+  }
+  document.getElementById('t-in-stage').textContent = inStageSec != null ? fmtDuration(inStageSec) : '—';
+  document.getElementById('t-stage-started').textContent =
+    stageStarted ? 'stage started ' + fmtTime(stageStarted) : '';
+
+  // Sub-task ETA (whichever ETA source is most reliable for this sub-stage)
+  let etaSubSec = null;
+  if (active === 'openmvs' && data.openmvs && data.openmvs.filter_eta_seconds != null
+      && sub && sub.name === 'filtering') {
+    etaSubSec = data.openmvs.filter_eta_seconds;
+  } else if (lp && lp.eta_str) {
+    etaSubSec = parseODMDuration(lp.eta_str);
+  }
+  document.getElementById('t-substage-eta').textContent = etaSubSec != null ? fmtDuration(etaSubSec) : '—';
+
+  // Estimate total wall-clock = elapsed + remaining-of-current-stage + sum-of-pending-stages
+  // remaining-of-current-stage = max(sub-task ETA, budget - in-stage-time)
+  let totalEtaSec = null;
+  if (active != null && c.uptime_seconds != null) {
+    let remainingCurrent;
+    const budget = STAGE_BUDGET[active] || 600;
+    if (etaSubSec != null) {
+      // ETA from ODM is for the sub-task; the stage may have more sub-tasks after.
+      // Use max(etaSubSec, budget - inStageSec) as a safer floor.
+      remainingCurrent = Math.max(etaSubSec, Math.max(0, budget - (inStageSec || 0)));
+    } else if (inStageSec != null) {
+      remainingCurrent = Math.max(0, budget - inStageSec);
+    } else {
+      remainingCurrent = budget;
+    }
+    // Sum pending stages (those still 'pending' in state)
+    let pendingSum = 0;
+    STAGES.forEach(s => { if (data.stages[s] === 'pending') pendingSum += (STAGE_BUDGET[s] || 0); });
+    const remaining = remainingCurrent + pendingSum;
+    totalEtaSec = c.uptime_seconds + remaining;
+    document.getElementById('t-total-eta').textContent = '~ ' + fmtDuration(totalEtaSec);
+    const finishAt = new Date(Date.now() + remaining * 1000);
+    document.getElementById('t-finish-at').textContent = 'finish ~ ' + finishAt.toLocaleString('en-US',{hour12:false});
+  } else {
+    document.getElementById('t-total-eta').textContent = '—';
+  }
+
+  // Per-stage timing table
+  const tt = document.getElementById('time-tbody');
+  tt.innerHTML = STAGES.map(s => {
+    const st = data.stage_started && data.stage_started[s];
+    const fn = data.stage_finished && data.stage_finished[s];
+    let dur = '—';
+    if (st && fn) {
+      dur = fmtDuration((new Date(fn) - new Date(st)) / 1000);
+    } else if (st && data.stages[s] === 'active') {
+      dur = '<span class="cyan">' + fmtDuration((Date.now() - new Date(st).getTime()) / 1000) + '</span>';
+    }
+    const state = data.stages[s];
+    const stateCell = state === 'done' ? '<span class="green">✓ done</span>'
+                    : state === 'active' ? '<span class="cyan"><span class="pulse-dot"></span>active</span>'
+                    : '<span class="faint">pending</span>';
+    return `<tr><td>${STAGE_LABELS[s]}<br><span class="faint" style="font-size:10px;">${state}</span></td>
+                <td class="muted">${fmtTime(st)}</td>
+                <td class="muted">${fmtTime(fn)}</td>
+                <td>${dur}</td></tr>`;
+  }).join('');
+
+  // intermediate outputs
+  const out = data.outputs || {};
+  const obj = (data.outputs && data.outputs.obj_exists)
+    ? `<span class="green">✓ ${fmtMB(out.obj_size_mb)}</span>` : `<span class="faint">pending</span>`;
+  const rows = [
+    ['OpenMVS dense cloud',          out.dense_ply_mb,        'opensfm/undistorted/openmvs/scene_dense.ply',  out.dense_ply_mb > 0],
+    ['Filtered point cloud',         out.filterpoints_ply_mb, 'odm_filterpoints/point_cloud.ply',             out.filterpoints_ply_mb > 0],
+    ['3D mesh',                       out.mesh_3d_ply_mb,     'odm_meshing/odm_mesh.ply',                      out.mesh_3d_ply_mb > 0],
+    ['2.5D mesh (fallback)',         out.mesh_25d_ply_mb,     'odm_meshing/odm_25dmesh.ply',                   out.mesh_25d_ply_mb > 0],
+    ['Texture atlases (PNG)',         out.texture_atlases,    'odm_texturing/*.png',                            out.texture_atlases > 0, true],
+    ['Final textured OBJ',            out.obj_size_mb,        'odm_texturing/odm_textured_model_geo.obj',     out.obj_exists],
+    ['MTL (texture index)',           out.mtl_exists ? 1 : 0, 'odm_texturing/odm_textured_model_geo.mtl',     out.mtl_exists, true],
+  ];
+  const tbody = document.getElementById('outputs-tbody');
+  tbody.innerHTML = rows.map(r => {
+    const [name, size, path, ok, isCount] = r;
+    let sizeCell;
+    if (isCount) sizeCell = ok ? `${size} files` : '—';
+    else sizeCell = size > 0 ? fmtMB(size) : '—';
+    const stateCell = ok
+      ? '<span class="green">✓ written</span>'
+      : '<span class="faint">pending</span>';
+    return `<tr><td>${name}</td><td>${sizeCell}</td><td class="faint" style="font-family:monospace;font-size:11px;">${path}</td><td>${stateCell}</td></tr>`;
+  }).join('');
+
+  // log tail
+  const logEl = document.getElementById('log');
+  const tail = (data.log.tail || []).slice(-40);
+  logEl.innerHTML = tail.map(l => {
+    const safe = htmlEscape(l);
+    if (/ERROR|FATAL|Traceback|Killed|OOM/i.test(l)) return `<span class="err">${safe}</span>`;
+    if (/WARNING|Warn/i.test(l)) return `<span class="warn">${safe}</span>`;
+    if (/Finished\s+\w+\s+stage|Saved|complete|done|100%/i.test(l)) return `<span class="succ">${safe}</span>`;
+    if (/\[INFO\]|DEBUG/i.test(l)) return `<span class="info">${safe}</span>`;
+    return safe;
+  }).join('\n');
+  logEl.scrollTop = logEl.scrollHeight;
+
+  // densify history
+  const dl = (data.openmvs && data.openmvs.densify_launches) || [];
+  const dh = document.getElementById('densify-info');
+  if (dl.length === 0) {
+    dh.innerHTML = '<span class="faint" style="font-size:12px;">DensifyPointCloud not started yet</span>';
+  } else {
+    dh.innerHTML = dl.map((l, i) => {
+      const flag = l.tiled
+        ? '<span class="amber" style="font-size:11px;">[tiled-mode retry]</span>'
+        : '<span class="green" style="font-size:11px;">[standard mode]</span>';
+      return `<div style="margin-bottom:6px;font-size:12px;">
+                <span class="faint">#${i+1}</span>
+                ${fmtTime(l.ts)} ${flag}
+              </div>`;
+    }).join('');
+  }
+
+  // errors
+  const errs = data.errors_recent || [];
+  const errBox = document.getElementById('errors-box');
+  if (errs.length === 0) {
+    errBox.innerHTML = '<span class="faint">(no errors / OOM events in recent log)</span>';
+  } else {
+    errBox.innerHTML = errs.map(e => `
+      <div class="err-box">
+        <div class="faint" style="font-size:10px;">${fmtTime(e.ts) || ''}</div>
+        ${htmlEscape(e.line)}
+      </div>`).join('');
+  }
+
+  // links
+  document.getElementById('obj-link').href    = data.obj_url || '#';
+  document.getElementById('viewer-link').href = data.viewer_url || '#';
+
+  // last poll heartbeat
+  document.getElementById('last-poll').innerHTML =
+    'updated ' + new Date(data.ts).toLocaleTimeString('en-US', { hour12: false });
+}
+
+tick();
+setInterval(tick, 2000);
+</script>
+</body>
+</html>
